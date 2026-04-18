@@ -4,11 +4,14 @@ import os
 import sys
 
 from dotenv import load_dotenv
+from pipeline.project_context import read_project_context, write_project_context
+from pipeline.project_store import ensure_project, get_current_project_id, sync_project_from_outputs
 from pipeline.theme_config import DEFAULT_THEME, THEMES, write_theme_selection
 
 load_dotenv()
 
-PIPELINE_STAGES = ["content_generator", "narrator", "word_aligner", "animator"]
+ACTIVE_PIPELINE_STAGES = ["content_generator", "narrator", "word_aligner", "animator"]
+STAGE_CHOICES = [*ACTIVE_PIPELINE_STAGES, "sora_generator"]
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
 TOPIC_PATH = os.path.join(OUTPUT_DIR, "topic.json")
 
@@ -83,10 +86,34 @@ def run_stage(name: str) -> None:
         from pipeline.word_aligner import main
     elif name == "animator":
         from pipeline.animator import main
+    elif name == "sora_generator":
+        from pipeline.sora_generator import main
     else:
         raise ValueError(f"Unknown stage: {name}")
 
     main()
+
+
+def sync_project_snapshot(
+    project_id: str | None,
+    *,
+    title: str,
+    summary: str,
+    theme: str,
+) -> None:
+    if not project_id and not title:
+        return
+    try:
+        project = sync_project_from_outputs(
+            project_id=project_id,
+            title=title or None,
+            summary=summary or None,
+            theme=theme,
+        )
+        if project:
+            print(f"[project] Snapshot saved → {project.project_id}")
+    except Exception as e:
+        print(f"[WARN] Project snapshot sync failed: {e}", file=sys.stderr)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -95,8 +122,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--stage",
-        choices=PIPELINE_STAGES,
-        help="Run a single active stage. Omit to run the full infographic pipeline.",
+        choices=STAGE_CHOICES,
+        help="Run a single stage. Omit to run the full infographic render pipeline.",
     )
     parser.add_argument(
         "--provider",
@@ -139,6 +166,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_THEME,
         help="Visual theme used for preview and final Remotion render.",
     )
+    parser.add_argument(
+        "--project-id",
+        default="",
+        help="Optional existing project id. Reuses and updates projects/<project_id>/project.json.",
+    )
+    parser.add_argument(
+        "--beat-id",
+        default="",
+        help="Optional beat id used by stage-specific tools like sora_generator.",
+    )
     return parser
 
 
@@ -154,6 +191,36 @@ def main() -> None:
     theme_name = write_theme_selection(args.theme)
     os.environ["REELGPT_THEME"] = theme_name
     print(f"[theme] Active theme → {theme_name}")
+
+    project = None
+    if args.title or args.project_id:
+        project = ensure_project(
+            title=args.title,
+            summary=args.summary,
+            theme=theme_name,
+            requested_id=args.project_id or None,
+        )
+    else:
+        project_context = read_project_context()
+        context_project_id = str(project_context.get("project_id", "")).strip()
+        current_project_id = context_project_id or get_current_project_id()
+        if current_project_id:
+            project = ensure_project(
+                theme=theme_name,
+                requested_id=current_project_id,
+            )
+    project_id = project.project_id if project else None
+    if project_id:
+        os.environ["REELGPT_PROJECT_ID"] = project_id
+        write_project_context(
+            project_id,
+            title=args.title,
+            summary=args.summary,
+            theme=theme_name,
+        )
+        print(f"[project] Active project → {project_id}")
+    if args.beat_id:
+        os.environ["REELGPT_TARGET_BEAT"] = args.beat_id.strip()
 
     if args.tone:
         os.environ["NARRATOR_TONE_OVERRIDE"] = args.tone
@@ -178,7 +245,7 @@ def main() -> None:
     log.info(f"Pipeline starting — LLM mode: {mode}")
     print(f"\n[mode] {mode}\n")
 
-    stages_to_run = [args.stage] if args.stage else PIPELINE_STAGES
+    stages_to_run = [args.stage] if args.stage else ACTIVE_PIPELINE_STAGES
 
     if args.stage == "narrator" and args.narration:
         apply_narration_override(args.narration)
@@ -193,9 +260,22 @@ def main() -> None:
             print(f"\n[ERROR] Stage '{stage}' failed: {e}", file=sys.stderr)
             sys.exit(1)
 
+        sync_project_snapshot(
+            project_id,
+            title=args.title,
+            summary=args.summary,
+            theme=theme_name,
+        )
+
         if stage == "content_generator" and args.narration:
             apply_narration_override(args.narration)
 
+    sync_project_snapshot(
+        project_id,
+        title=args.title,
+        summary=args.summary,
+        theme=theme_name,
+    )
     print("\n[done] Infographic pipeline complete.")
 
 

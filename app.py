@@ -5,15 +5,49 @@ import mimetypes
 import os
 import subprocess
 import sys
+import threading
+import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
+from pipeline.project_context import read_project_context, write_project_context
+from pipeline.project_store import (
+    duplicate_project,
+    ensure_project,
+    get_current_project_id,
+    list_projects,
+    load_current_project,
+    load_project,
+    set_current_project,
+    update_beats,
+)
 from pipeline.theme_config import THEMES, normalize_theme_name, read_theme_selection
 
 ROOT = os.path.dirname(__file__)
 WEB_DIR = os.path.join(ROOT, "web")
 OUTPUT_DIR = os.path.join(ROOT, "output")
+PROJECTS_DIR = os.path.join(ROOT, "projects")
+PROJECT_CONTEXT_PATH = os.path.join(OUTPUT_DIR, "project_context.json")
+APP_BOOT_TS = time.time()
+
+RUN_LOCK = threading.Lock()
+RUN_JOB = {
+    "session_id": None,
+    "active": False,
+    "kind": "",
+    "stages": [],
+    "current_stage": None,
+    "failed_stage": None,
+    "completed": False,
+    "success": False,
+    "log": "",
+    "started_at": None,
+    "ended_at": None,
+}
+RUN_HISTORY_LIMIT = 12
+RUN_SESSIONS: list[dict] = []
+RUN_SEQUENCE = 0
 
 
 def _read_json(path: str, default):
@@ -26,6 +60,12 @@ def _read_json(path: str, default):
         return default
 
 
+def _is_fresh_file(path: str) -> bool:
+    if not os.path.exists(path):
+        return False
+    return os.path.getmtime(path) >= APP_BOOT_TS
+
+
 def _file_url(path: str) -> str | None:
     if not os.path.exists(path):
         return None
@@ -35,20 +75,243 @@ def _file_url(path: str) -> str | None:
 
 
 def _load_state() -> dict:
-    topic = _read_json(os.path.join(OUTPUT_DIR, "topic.json"), {})
-    script = _read_json(os.path.join(OUTPUT_DIR, "spoken_narration.json"), {})
-    raw_script = _read_json(os.path.join(OUTPUT_DIR, "script.json"), {})
-    word_timings = _read_json(os.path.join(OUTPUT_DIR, "word_timings.json"), [])
+    topic_path = os.path.join(OUTPUT_DIR, "topic.json")
+    spoken_script_path = os.path.join(OUTPUT_DIR, "spoken_narration.json")
+    raw_script_path = os.path.join(OUTPUT_DIR, "script.json")
+    word_timings_path = os.path.join(OUTPUT_DIR, "word_timings.json")
+    video_path = os.path.join(OUTPUT_DIR, "video.mp4")
+    pipeline_log_path = os.path.join(OUTPUT_DIR, "pipeline.log")
+
+    # Fresh-session behavior:
+    # only auto-load persisted context/outputs written after this UI server boot.
+    # This prevents stale project/topic/video from auto-hydrating a "new" session.
+    context = read_project_context() if _is_fresh_file(PROJECT_CONTEXT_PATH) else {}
+    context_project_id = str(context.get("project_id", "")).strip()
+    project = load_project(context_project_id) if context_project_id else None
+    if project is None and _is_fresh_file(PROJECT_CONTEXT_PATH):
+        project = load_current_project()
+    if project is None and _is_fresh_file(PROJECT_CONTEXT_PATH):
+        fallback_project_id = get_current_project_id()
+        if fallback_project_id:
+            project = load_project(fallback_project_id)
+
+    topic = _read_json(topic_path, {}) if _is_fresh_file(topic_path) else {}
+    script = _read_json(spoken_script_path, {}) if _is_fresh_file(spoken_script_path) else {}
+    raw_script = _read_json(raw_script_path, {}) if _is_fresh_file(raw_script_path) else {}
+    word_timings = _read_json(word_timings_path, []) if _is_fresh_file(word_timings_path) else []
     return {
+        "projectId": project.project_id if project else None,
+        "project": project.model_dump() if project else None,
+        "projects": list_projects(),
         "topic": topic,
         "script": script,
         "rawScript": raw_script,
         "theme": read_theme_selection(),
         "themes": THEMES,
-        "videoUrl": _file_url(os.path.join(OUTPUT_DIR, "video.mp4")),
-        "pipelineLogUrl": _file_url(os.path.join(OUTPUT_DIR, "pipeline.log")),
+        "videoUrl": _file_url(video_path) if _is_fresh_file(video_path) else None,
+        "pipelineLogUrl": _file_url(pipeline_log_path) if _is_fresh_file(pipeline_log_path) else None,
         "hasWordTimings": bool(word_timings),
     }
+
+
+def _truncate_log(lines: list[str]) -> str:
+    return "\n".join(lines)[-16000:]
+
+
+def _next_task(job: dict) -> str:
+    kind = str(job.get("kind") or "")
+    active = bool(job.get("active"))
+    completed = bool(job.get("completed"))
+    success = bool(job.get("success"))
+    failed_stage = job.get("failed_stage")
+    current_stage = job.get("current_stage")
+    stages = list(job.get("stages") or [])
+
+    if active:
+        if current_stage and current_stage in stages:
+            index = stages.index(current_stage)
+            if index + 1 < len(stages):
+                return f"Finish {current_stage}, then run {stages[index + 1]}."
+            return f"Finish {current_stage} to complete this run."
+        return "Pipeline running. Wait for current stage to complete."
+
+    if completed and not success:
+        if failed_stage:
+            return f"Inspect logs for {failed_stage}, fix, then rerun."
+        return "Inspect logs, fix failure, then rerun."
+
+    if completed and success:
+        if kind == "generate-script":
+            return "Review script, set beat modes/prompts, then generate motion assets."
+        if kind == "generate-beat-assets":
+            return "Render video using ready beat assets."
+        if kind == "render":
+            return "Review output/video.mp4, then iterate script or beats."
+        return "Run the next pipeline task."
+
+    return "Start a pipeline run."
+
+
+def _stage_states(job: dict) -> list[dict]:
+    stages = job.get("stages") or []
+    current_stage = job.get("current_stage")
+    failed_stage = job.get("failed_stage")
+    completed = bool(job.get("completed"))
+    success = bool(job.get("success"))
+
+    states: list[dict] = []
+    if not stages:
+        return states
+
+    current_index = stages.index(current_stage) if current_stage in stages else -1
+    failed_index = stages.index(failed_stage) if failed_stage in stages else -1
+
+    for index, stage in enumerate(stages):
+        status = "pending"
+        if completed and success:
+            status = "complete"
+        elif failed_index >= 0:
+            if index < failed_index:
+                status = "complete"
+            elif index == failed_index:
+                status = "failed"
+        elif current_index >= 0:
+            if index < current_index:
+                status = "complete"
+            elif index == current_index:
+                status = "active"
+        elif job.get("active") and index == 0:
+            status = "active"
+        states.append({"name": stage, "status": status})
+
+    return states
+
+
+def _job_payload() -> dict:
+    with RUN_LOCK:
+        job = dict(RUN_JOB)
+
+    return _build_job_payload(job)
+
+
+def _build_job_payload(job: dict) -> dict:
+    stage_states = _stage_states(job)
+    completed_count = sum(1 for stage in stage_states if stage["status"] == "complete")
+    if not stage_states:
+        progress = 0
+    elif job.get("completed") and job.get("success"):
+        progress = 100
+    else:
+        progress = round((completed_count / max(1, len(stage_states))) * 100)
+        if any(stage["status"] == "active" for stage in stage_states):
+            progress = min(99, progress + round(100 / max(1, len(stage_states) * 2)))
+
+    return {
+        "sessionId": job.get("session_id"),
+        "active": bool(job.get("active")),
+        "kind": job.get("kind") or "",
+        "currentStage": job.get("current_stage"),
+        "failedStage": job.get("failed_stage"),
+        "completed": bool(job.get("completed")),
+        "success": bool(job.get("success")),
+        "log": job.get("log") or "",
+        "progress": progress,
+        "stageStates": stage_states,
+        "nextTask": _next_task(job),
+        "startedAt": job.get("started_at"),
+        "endedAt": job.get("ended_at"),
+    }
+
+
+def _job_sessions_payload() -> list[dict]:
+    with RUN_LOCK:
+        sessions = [dict(session) for session in RUN_SESSIONS]
+    sessions.reverse()
+    return [_build_job_payload(session) for session in sessions]
+
+
+def _payload() -> dict:
+    state = _load_state()
+    state["job"] = _job_payload()
+    state["jobSessions"] = _job_sessions_payload()
+    if state["job"]["log"]:
+        state["log"] = state["job"]["log"]
+    return state
+
+
+def _run_pipeline_job(kind: str, args: list[str], stages: list[str]) -> None:
+    lines: list[str] = []
+    process = subprocess.Popen(
+        [sys.executable, "run.py", *args],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+
+    assert process.stdout is not None
+    for raw_line in process.stdout:
+        line = raw_line.rstrip("\n")
+        lines.append(line)
+        update = {"log": _truncate_log(lines)}
+        if "Stage START:" in line:
+            update["current_stage"] = line.split("Stage START:", 1)[1].strip()
+        with RUN_LOCK:
+            RUN_JOB.update(update)
+            for session in RUN_SESSIONS:
+                if session.get("session_id") == RUN_JOB.get("session_id"):
+                    session.update(update)
+                    break
+
+    returncode = process.wait()
+    with RUN_LOCK:
+        RUN_JOB["active"] = False
+        RUN_JOB["completed"] = True
+        RUN_JOB["success"] = returncode == 0
+        RUN_JOB["log"] = _truncate_log(lines)
+        RUN_JOB["ended_at"] = int(time.time())
+        if returncode != 0:
+            RUN_JOB["failed_stage"] = RUN_JOB.get("current_stage")
+        RUN_JOB["current_stage"] = None if returncode == 0 else RUN_JOB.get("current_stage")
+        for session in RUN_SESSIONS:
+            if session.get("session_id") == RUN_JOB.get("session_id"):
+                session.update(RUN_JOB)
+                break
+
+
+def _start_pipeline_job(kind: str, args: list[str], stages: list[str]) -> dict:
+    global RUN_SEQUENCE
+
+    with RUN_LOCK:
+        if RUN_JOB.get("active"):
+            raise RuntimeError("Another pipeline job is already running.")
+        RUN_SEQUENCE += 1
+        session_id = f"run-{int(time.time())}-{RUN_SEQUENCE}"
+        RUN_JOB.update({
+            "session_id": session_id,
+            "active": True,
+            "kind": kind,
+            "stages": stages,
+            "current_stage": stages[0] if stages else None,
+            "failed_stage": None,
+            "completed": False,
+            "success": False,
+            "log": "",
+            "started_at": int(time.time()),
+            "ended_at": None,
+        })
+        RUN_SESSIONS.append(dict(RUN_JOB))
+        if len(RUN_SESSIONS) > RUN_HISTORY_LIMIT:
+            del RUN_SESSIONS[:-RUN_HISTORY_LIMIT]
+
+    worker = threading.Thread(
+        target=_run_pipeline_job,
+        args=(kind, args, stages),
+        daemon=True,
+    )
+    worker.start()
+    return _payload()
 
 
 def _run_pipeline(args: list[str]) -> tuple[int, str]:
@@ -64,7 +327,7 @@ def _run_pipeline(args: list[str]) -> tuple[int, str]:
 
 
 class AppHandler(BaseHTTPRequestHandler):
-    server_version = "ReelGPTPhase1/1.0"
+    server_version = "ReelGPTPhase2/1.0"
 
     def _send_json(self, status: int, payload: dict) -> None:
         data = json.dumps(payload).encode("utf-8")
@@ -104,10 +367,19 @@ class AppHandler(BaseHTTPRequestHandler):
         if path in {"/app.js", "/styles.css"}:
             return self._send_file(os.path.join(WEB_DIR, path.lstrip("/")))
         if path == "/api/state":
-            return self._send_json(HTTPStatus.OK, _load_state())
+            return self._send_json(HTTPStatus.OK, _payload())
+        if path == "/api/run-status":
+            return self._send_json(HTTPStatus.OK, _payload())
+        if path == "/api/projects":
+            return self._send_json(HTTPStatus.OK, {"projects": list_projects()})
         if path.startswith("/output/"):
             target = os.path.normpath(os.path.join(ROOT, path.lstrip("/")))
             if os.path.commonpath([OUTPUT_DIR, target]) != OUTPUT_DIR:
+                return self.send_error(HTTPStatus.FORBIDDEN, "Forbidden")
+            return self._send_file(target)
+        if path.startswith("/projects/"):
+            target = os.path.normpath(os.path.join(ROOT, path.lstrip("/")))
+            if os.path.commonpath([PROJECTS_DIR, target]) != PROJECTS_DIR:
                 return self.send_error(HTTPStatus.FORBIDDEN, "Forbidden")
             return self._send_file(target)
 
@@ -118,25 +390,99 @@ class AppHandler(BaseHTTPRequestHandler):
         body = self._parse_body()
 
         if parsed.path == "/api/generate-script":
+            project_id = str(body.get("projectId", "")).strip()
             title = str(body.get("title", "")).strip()
             summary = str(body.get("summary", "")).strip()
             theme = normalize_theme_name(body.get("theme"))
             if not title:
                 return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "title required"})
+            if project_id:
+                existing = load_project(project_id)
+                existing_title = (existing.topic.title if existing else "").strip() if existing else ""
+                if existing is None or existing_title != title:
+                    # Title change implies a fresh lifecycle project.
+                    project_id = ""
 
-            code, log = _run_pipeline([
-                "--stage", "content_generator",
-                "--title", title,
-                "--summary", summary,
-                "--theme", theme,
-            ])
-            state = _load_state()
-            state["log"] = log
-            if code != 0:
-                return self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, state)
-            return self._send_json(HTTPStatus.OK, state)
+            try:
+                payload = _start_pipeline_job(
+                    "generate-script",
+                    [
+                        "--stage", "content_generator",
+                        "--title", title,
+                        "--summary", summary,
+                        "--theme", theme,
+                        *(["--project-id", project_id] if project_id else []),
+                    ],
+                    ["content_generator"],
+                )
+            except RuntimeError as e:
+                return self._send_json(HTTPStatus.CONFLICT, {"error": str(e), **_payload()})
+            return self._send_json(HTTPStatus.ACCEPTED, payload)
+
+        if parsed.path == "/api/new-project":
+            title = str(body.get("title", "")).strip() or "project"
+            summary = str(body.get("summary", "")).strip()
+            theme = normalize_theme_name(body.get("theme"))
+            try:
+                project = ensure_project(
+                    title=title,
+                    summary=summary,
+                    theme=theme,
+                )
+                write_project_context(
+                    project.project_id,
+                    title=project.topic.title,
+                    summary=project.topic.summary,
+                    theme=project.theme_name,
+                )
+            except Exception as e:
+                return self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(e)})
+            return self._send_json(HTTPStatus.OK, _payload())
+
+        if parsed.path == "/api/duplicate-project":
+            source_project_id = str(body.get("sourceProjectId", "")).strip()
+            if not source_project_id:
+                return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "sourceProjectId required"})
+            title = str(body.get("title", "")).strip()
+            summary = str(body.get("summary", "")).strip()
+            theme = normalize_theme_name(body.get("theme"))
+            try:
+                project = duplicate_project(
+                    source_project_id,
+                    title=title,
+                    summary=summary,
+                    theme=theme,
+                )
+                write_project_context(
+                    project.project_id,
+                    title=project.topic.title,
+                    summary=project.topic.summary,
+                    theme=project.theme_name,
+                )
+            except RuntimeError as e:
+                return self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(e)})
+            except Exception as e:
+                return self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(e)})
+            return self._send_json(HTTPStatus.OK, _payload())
+
+        if parsed.path == "/api/load-project":
+            project_id = str(body.get("projectId", "")).strip()
+            if not project_id:
+                return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "projectId required"})
+            project = load_project(project_id)
+            if project is None:
+                return self._send_json(HTTPStatus.NOT_FOUND, {"error": f"Project not found: {project_id}"})
+            set_current_project(project.project_id)
+            write_project_context(
+                project.project_id,
+                title=project.topic.title,
+                summary=project.topic.summary,
+                theme=project.theme_name,
+            )
+            return self._send_json(HTTPStatus.OK, _payload())
 
         if parsed.path == "/api/render":
+            project_id = str(body.get("projectId", "")).strip()
             title = str(body.get("title", "")).strip()
             summary = str(body.get("summary", "")).strip()
             theme = normalize_theme_name(body.get("theme"))
@@ -157,17 +503,65 @@ class AppHandler(BaseHTTPRequestHandler):
                     {"error": "hook, concept_1, and takeaway_cta required"},
                 )
 
-            code, log = _run_pipeline([
-                "--title", title,
-                "--summary", summary,
-                "--theme", theme,
-                "--narration", json.dumps(narration),
-            ])
-            state = _load_state()
-            state["log"] = log
-            if code != 0:
-                return self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, state)
-            return self._send_json(HTTPStatus.OK, state)
+            try:
+                payload = _start_pipeline_job(
+                    "render",
+                    [
+                        "--title", title,
+                        "--summary", summary,
+                        "--theme", theme,
+                        *(["--project-id", project_id] if project_id else []),
+                        "--narration", json.dumps(narration),
+                    ],
+                    ["content_generator", "narrator", "word_aligner", "animator"],
+                )
+            except RuntimeError as e:
+                return self._send_json(HTTPStatus.CONFLICT, {"error": str(e), **_payload()})
+            return self._send_json(HTTPStatus.ACCEPTED, payload)
+
+        if parsed.path == "/api/project-beats":
+            project_id = str(body.get("projectId", "")).strip()
+            beat_updates = body.get("beats")
+            if not project_id:
+                return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "projectId required"})
+            if not isinstance(beat_updates, list):
+                return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "beats must be a list"})
+
+            try:
+                update_beats(project_id, beat_updates)
+            except Exception as e:
+                return self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(e)})
+
+            return self._send_json(HTTPStatus.OK, _payload())
+
+        if parsed.path == "/api/generate-beat-assets":
+            project_id = str(body.get("projectId", "")).strip()
+            beat_updates = body.get("beats") or []
+            beat_id = str(body.get("beatId", "")).strip()
+            if not project_id:
+                return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "projectId required"})
+            if beat_updates and not isinstance(beat_updates, list):
+                return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "beats must be a list"})
+
+            try:
+                if beat_updates:
+                    update_beats(project_id, beat_updates)
+            except Exception as e:
+                return self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(e)})
+
+            try:
+                payload = _start_pipeline_job(
+                    "generate-beat-assets",
+                    [
+                        "--stage", "sora_generator",
+                        "--project-id", project_id,
+                        *(["--beat-id", beat_id] if beat_id else []),
+                    ],
+                    ["sora_generator"],
+                )
+            except RuntimeError as e:
+                return self._send_json(HTTPStatus.CONFLICT, {"error": str(e), **_payload()})
+            return self._send_json(HTTPStatus.ACCEPTED, payload)
 
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
@@ -176,7 +570,7 @@ def main() -> None:
     host = "127.0.0.1"
     port = int(os.environ.get("REELGPT_UI_PORT", "8000"))
     server = ThreadingHTTPServer((host, port), AppHandler)
-    print(f"[ui] ReelGPT Phase 1 UI on http://{host}:{port}")
+    print(f"[ui] ReelGPT Phase 2 UI on http://{host}:{port}")
     print("[ui] Ctrl+C to stop")
     try:
         server.serve_forever()
