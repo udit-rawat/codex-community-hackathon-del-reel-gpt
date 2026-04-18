@@ -118,7 +118,7 @@ def sync_project_snapshot(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Phase 1 infographic pipeline: user input -> content -> narration -> timing -> render",
+        description="ReelGPT Studio pipeline: user input -> content -> narration -> timing -> render",
     )
     parser.add_argument(
         "--stage",

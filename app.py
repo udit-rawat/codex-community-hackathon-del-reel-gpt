@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -23,6 +24,7 @@ from pipeline.project_store import (
     update_beats,
 )
 from pipeline.theme_config import THEMES, normalize_theme_name, read_theme_selection
+from pipeline.theme_config import read_custom_theme, write_custom_theme
 
 ROOT = os.path.dirname(__file__)
 WEB_DIR = os.path.join(ROOT, "web")
@@ -44,6 +46,7 @@ RUN_JOB = {
     "log": "",
     "started_at": None,
     "ended_at": None,
+    "stage_progress": {},
 }
 RUN_HISTORY_LIMIT = 12
 RUN_SESSIONS: list[dict] = []
@@ -107,10 +110,17 @@ def _load_state() -> dict:
         "script": script,
         "rawScript": raw_script,
         "theme": read_theme_selection(),
+        "customTheme": read_custom_theme(),
         "themes": THEMES,
         "videoUrl": _file_url(video_path) if _is_fresh_file(video_path) else None,
         "pipelineLogUrl": _file_url(pipeline_log_path) if _is_fresh_file(pipeline_log_path) else None,
         "hasWordTimings": bool(word_timings),
+        "costConfig": {
+            "textModel": os.environ.get("OPENAI_TEXT_MODEL", "gpt-4.1-nano").strip() or "gpt-4.1-nano",
+            "ttsModel": os.environ.get("OPENAI_TTS_MODEL", "gpt-4o-mini-tts").strip() or "gpt-4o-mini-tts",
+            "videoModel": os.environ.get("OPENAI_VIDEO_MODEL", "sora-2-pro").strip() or "sora-2-pro",
+            "videoSize": os.environ.get("OPENAI_VIDEO_SIZE", "1024x1792").strip() or "1024x1792",
+        },
     }
 
 
@@ -142,11 +152,11 @@ def _next_task(job: dict) -> str:
 
     if completed and success:
         if kind == "generate-script":
-            return "Review script, set beat modes/prompts, then generate motion assets."
+            return "Review narration, choose motion scenes, then generate motion assets."
         if kind == "generate-beat-assets":
-            return "Render video using ready beat assets."
+            return "Render video using ready motion scenes."
         if kind == "render":
-            return "Review output/video.mp4, then iterate script or beats."
+            return "Review output/video.mp4, then iterate narration or scenes."
         return "Run the next pipeline task."
 
     return "Start a pipeline run."
@@ -158,6 +168,7 @@ def _stage_states(job: dict) -> list[dict]:
     failed_stage = job.get("failed_stage")
     completed = bool(job.get("completed"))
     success = bool(job.get("success"))
+    stage_progress = job.get("stage_progress") or {}
 
     states: list[dict] = []
     if not stages:
@@ -182,7 +193,15 @@ def _stage_states(job: dict) -> list[dict]:
                 status = "active"
         elif job.get("active") and index == 0:
             status = "active"
-        states.append({"name": stage, "status": status})
+        if status == "complete":
+            progress = 100
+        elif status == "active":
+            progress = max(0, min(99, int(float(stage_progress.get(stage, 0) or 0))))
+        elif status == "failed":
+            progress = max(0, min(99, int(float(stage_progress.get(stage, 0) or 0))))
+        else:
+            progress = 0
+        states.append({"name": stage, "status": status, "progress": progress})
 
     return states
 
@@ -196,15 +215,14 @@ def _job_payload() -> dict:
 
 def _build_job_payload(job: dict) -> dict:
     stage_states = _stage_states(job)
-    completed_count = sum(1 for stage in stage_states if stage["status"] == "complete")
     if not stage_states:
         progress = 0
     elif job.get("completed") and job.get("success"):
         progress = 100
     else:
-        progress = round((completed_count / max(1, len(stage_states))) * 100)
+        progress = round(sum(int(stage.get("progress") or 0) for stage in stage_states) / len(stage_states))
         if any(stage["status"] == "active" for stage in stage_states):
-            progress = min(99, progress + round(100 / max(1, len(stage_states) * 2)))
+            progress = min(99, progress)
 
     return {
         "sessionId": job.get("session_id"),
@@ -256,7 +274,20 @@ def _run_pipeline_job(kind: str, args: list[str], stages: list[str]) -> None:
         lines.append(line)
         update = {"log": _truncate_log(lines)}
         if "Stage START:" in line:
-            update["current_stage"] = line.split("Stage START:", 1)[1].strip()
+            stage_name = line.split("Stage START:", 1)[1].strip()
+            update["current_stage"] = stage_name
+            with RUN_LOCK:
+                progress_map = dict(RUN_JOB.get("stage_progress") or {})
+            progress_map.setdefault(stage_name, 0)
+            update["stage_progress"] = progress_map
+        progress_match = re.search(r"Stage PROGRESS:\s*([A-Za-z0-9_-]+)\s+([0-9]+(?:\.[0-9]+)?)", line)
+        if progress_match:
+            stage_name = progress_match.group(1)
+            progress_value = max(0, min(100, float(progress_match.group(2))))
+            with RUN_LOCK:
+                progress_map = dict(RUN_JOB.get("stage_progress") or {})
+            progress_map[stage_name] = max(progress_value, float(progress_map.get(stage_name, 0) or 0))
+            update["stage_progress"] = progress_map
         with RUN_LOCK:
             RUN_JOB.update(update)
             for session in RUN_SESSIONS:
@@ -271,6 +302,8 @@ def _run_pipeline_job(kind: str, args: list[str], stages: list[str]) -> None:
         RUN_JOB["success"] = returncode == 0
         RUN_JOB["log"] = _truncate_log(lines)
         RUN_JOB["ended_at"] = int(time.time())
+        if returncode == 0:
+            RUN_JOB["stage_progress"] = {stage: 100 for stage in RUN_JOB.get("stages") or []}
         if returncode != 0:
             RUN_JOB["failed_stage"] = RUN_JOB.get("current_stage")
         RUN_JOB["current_stage"] = None if returncode == 0 else RUN_JOB.get("current_stage")
@@ -300,6 +333,7 @@ def _start_pipeline_job(kind: str, args: list[str], stages: list[str]) -> dict:
             "log": "",
             "started_at": int(time.time()),
             "ended_at": None,
+            "stage_progress": {stage: 0 for stage in stages},
         })
         RUN_SESSIONS.append(dict(RUN_JOB))
         if len(RUN_SESSIONS) > RUN_HISTORY_LIMIT:
@@ -327,7 +361,7 @@ def _run_pipeline(args: list[str]) -> tuple[int, str]:
 
 
 class AppHandler(BaseHTTPRequestHandler):
-    server_version = "ReelGPTPhase2/1.0"
+    server_version = "ReelGPTStudio/1.0"
 
     def _send_json(self, status: int, payload: dict) -> None:
         data = json.dumps(payload).encode("utf-8")
@@ -481,14 +515,30 @@ class AppHandler(BaseHTTPRequestHandler):
             )
             return self._send_json(HTTPStatus.OK, _payload())
 
+        if parsed.path == "/api/custom-theme":
+            custom_theme = body.get("customTheme")
+            if not isinstance(custom_theme, dict):
+                return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "customTheme object required"})
+            try:
+                write_custom_theme(custom_theme)
+            except Exception as e:
+                return self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(e)})
+            return self._send_json(HTTPStatus.OK, _payload())
+
         if parsed.path == "/api/render":
             project_id = str(body.get("projectId", "")).strip()
             title = str(body.get("title", "")).strip()
             summary = str(body.get("summary", "")).strip()
             theme = normalize_theme_name(body.get("theme"))
+            custom_theme = body.get("customTheme")
             script = body.get("script") or {}
+            beat_updates = body.get("beats") or []
             if not title:
                 return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "title required"})
+            if custom_theme is not None and not isinstance(custom_theme, dict):
+                return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "customTheme object required"})
+            if beat_updates and not isinstance(beat_updates, list):
+                return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "beats must be a list"})
 
             narration = {
                 "hook": str(script.get("hook", "")).strip(),
@@ -504,6 +554,10 @@ class AppHandler(BaseHTTPRequestHandler):
                 )
 
             try:
+                if isinstance(custom_theme, dict):
+                    write_custom_theme(custom_theme)
+                if project_id and beat_updates:
+                    update_beats(project_id, beat_updates)
                 payload = _start_pipeline_job(
                     "render",
                     [
@@ -517,6 +571,8 @@ class AppHandler(BaseHTTPRequestHandler):
                 )
             except RuntimeError as e:
                 return self._send_json(HTTPStatus.CONFLICT, {"error": str(e), **_payload()})
+            except Exception as e:
+                return self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(e), **_payload()})
             return self._send_json(HTTPStatus.ACCEPTED, payload)
 
         if parsed.path == "/api/project-beats":
@@ -570,7 +626,7 @@ def main() -> None:
     host = "127.0.0.1"
     port = int(os.environ.get("REELGPT_UI_PORT", "8000"))
     server = ThreadingHTTPServer((host, port), AppHandler)
-    print(f"[ui] ReelGPT Phase 2 UI on http://{host}:{port}")
+    print(f"[ui] ReelGPT Studio on http://{host}:{port}")
     print("[ui] Ctrl+C to stop")
     try:
         server.serve_forever()
