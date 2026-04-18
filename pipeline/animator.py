@@ -26,6 +26,7 @@ import sys
 import threading
 import time
 
+from pipeline.project_store import get_current_project_id, load_project
 from pipeline.theme_config import read_theme_selection
 
 _ROOT         = os.path.join(os.path.dirname(__file__), "..")
@@ -140,6 +141,7 @@ def assemble_props(
     scene_plan: dict,
     timing: dict,
     cue_map: dict[str, int],
+    beat_configs: dict[str, dict],
 ) -> dict:
     """
     Merge pipeline outputs into the single RemotionProps object consumed by
@@ -165,7 +167,52 @@ def assemble_props(
         "totalFrames": total_frames,
         "themeName":   read_theme_selection(),
         "cues":        cue_map,
+        "beatConfigs": beat_configs,
     }
+
+
+def _copy_public_asset(src_path: str, project_id: str, beat_id: str) -> str | None:
+    if not src_path or not os.path.exists(src_path):
+        return None
+    ext = os.path.splitext(src_path)[1]
+    public_dir = os.path.join(REMOTION_DIR, "public", "project_assets", project_id, beat_id)
+    os.makedirs(public_dir, exist_ok=True)
+    filename = os.path.basename(src_path)
+    if not filename:
+        filename = f"asset{ext}"
+    dest_path = os.path.join(public_dir, filename)
+    shutil.copy2(src_path, dest_path)
+    return f"project_assets/{project_id}/{beat_id}/{filename}"
+
+
+def build_beat_configs(project_id: str | None) -> dict[str, dict]:
+    pid = project_id or os.environ.get("REELGPT_PROJECT_ID", "").strip() or get_current_project_id()
+    if not pid:
+        return {}
+
+    project = load_project(pid)
+    if project is None:
+        return {}
+
+    beat_configs: dict[str, dict] = {}
+    for beat in project.beats:
+        video_src = None
+        thumbnail_src = None
+        if beat.assets.video_asset and beat.assets.video_asset.path:
+            src_path = os.path.join(_ROOT, beat.assets.video_asset.path)
+            video_src = _copy_public_asset(src_path, project.project_id, beat.id)
+        if beat.assets.thumbnail_asset and beat.assets.thumbnail_asset.path:
+            src_path = os.path.join(_ROOT, beat.assets.thumbnail_asset.path)
+            thumbnail_src = _copy_public_asset(src_path, project.project_id, beat.id)
+
+        beat_configs[beat.id] = {
+            "mode": beat.mode.value,
+            "overlayEnabled": beat.overlay_enabled,
+            "cutoutEnabled": beat.cutout_enabled,
+            "videoSrc": video_src,
+            "thumbnailSrc": thumbnail_src,
+        }
+    return beat_configs
 
 
 # ── Remotion execution ─────────────────────────────────────────────────────────
@@ -366,7 +413,9 @@ def main():
     print("✓ narration.wav → remotion/public/narration.wav")
 
     # ── Assemble props ────────────────────────────────────────────────────────
-    props = assemble_props(params, scene_plan, timing, cue_map)
+    project_id = os.environ.get("REELGPT_PROJECT_ID", "").strip() or get_current_project_id()
+    beat_configs = build_beat_configs(project_id)
+    props = assemble_props(params, scene_plan, timing, cue_map, beat_configs)
 
     total_dur      = props["totalFrames"] / FPS
     beat_templates = [b["template"] for b in props["beats"]]

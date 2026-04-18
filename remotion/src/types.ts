@@ -30,6 +30,16 @@ export interface TimingEntry {
  */
 export type CueMap = Record<string, number>;
 
+export type BeatMode = "infographic" | "animation" | "hybrid";
+
+export interface BeatRenderConfig {
+  mode: BeatMode;
+  overlayEnabled: boolean;
+  cutoutEnabled: boolean;
+  videoSrc?: string | null;
+  thumbnailSrc?: string | null;
+}
+
 // ── Root props passed from animator.py via --props ────────────────────────────
 
 export interface RemotionProps {
@@ -53,6 +63,8 @@ export interface RemotionProps {
   totalFrames: number;
   /** Active visual theme */
   themeName?: string;
+  /** Beat-level render metadata from project.json */
+  beatConfigs?: Record<string, BeatRenderConfig>;
   /**
    * Semantic cue map from word-level audio alignment (T5).
    * Optional — absent before word_aligner runs.

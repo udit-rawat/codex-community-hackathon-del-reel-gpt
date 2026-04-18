@@ -1,0 +1,50 @@
+{
+  "segment_cues": [
+    {
+      "label": "hook_start",
+      "segment": "hook",
+      "offset_frames": 0
+    },
+    {
+      "label": "concept_1_start",
+      "segment": "concept_1",
+      "offset_frames": 0
+    },
+    {
+      "label": "concept_2_start",
+      "segment": "concept_2",
+      "offset_frames": 0
+    },
+    {
+      "label": "takeaway_start",
+      "segment": "takeaway_cta",
+      "offset_frames": 0
+    }
+  ],
+  "word_cues": [
+    {
+      "label": "hook_reveal",
+      "trigger_word": "Phones",
+      "occurrence": 0,
+      "offset_frames": -12
+    },
+    {
+      "label": "context_show",
+      "trigger_word": "NPUs",
+      "occurrence": 0,
+      "offset_frames": -10
+    },
+    {
+      "label": "insight_highlight",
+      "trigger_word": "Hybrid",
+      "occurrence": 0,
+      "offset_frames": -10
+    },
+    {
+      "label": "takeaway_emphasize",
+      "trigger_word": "Edge",
+      "occurrence": 0,
+      "offset_frames": -10
+    }
+  ]
+}

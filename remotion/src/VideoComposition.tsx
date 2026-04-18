@@ -14,8 +14,8 @@
  */
 
 import React, { useMemo } from "react";
-import { Audio, interpolate, staticFile, useVideoConfig } from "remotion";
-import type { AnimateIn, BeatLayout, RemotionProps, ScenePayload, TakeawaySceneData, TimingEntry } from "./types";
+import { AbsoluteFill, Audio, interpolate, OffthreadVideo, staticFile, useVideoConfig } from "remotion";
+import type { AnimateIn, BeatLayout, BeatRenderConfig, RemotionProps, ScenePayload, TakeawaySceneData, TimingEntry } from "./types";
 import { LayoutRenderer }  from "./LayoutRenderer";
 import { SceneRouter }     from "./SceneRouter";
 import { TakeawayScene }   from "./layouts/TakeawayScene";
@@ -90,6 +90,78 @@ function ghostContent(
   return null;
 }
 
+function supportsAnimationOverlay(scenePayload?: ScenePayload): boolean {
+  if (!scenePayload) {
+    return false;
+  }
+
+  return [
+    "StatementSlam",
+    "TriStat",
+    "MetricFocus",
+    "DataGrid",
+    "TakeawayScene",
+  ].includes(scenePayload.data.layout);
+}
+
+const MotionPlate: React.FC<{
+  src: string;
+  mode: BeatRenderConfig["mode"];
+}> = ({ src, mode }) => {
+  const dimOpacity = mode === "hybrid" ? 0.18 : 0.1;
+
+  return (
+    <AbsoluteFill style={{ background: "#000000" }}>
+      <OffthreadVideo
+        src={staticFile(src)}
+        volume={0}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+        }}
+      />
+      <AbsoluteFill
+        style={{
+          background: `linear-gradient(180deg, rgba(0,0,0,${dimOpacity}) 0%, rgba(0,0,0,0.38) 100%)`,
+        }}
+      />
+    </AbsoluteFill>
+  );
+};
+
+function renderSceneContent(
+  scenePayload: ScenePayload | undefined,
+  beatLayout: BeatLayout | undefined,
+  beatDurFrames: number,
+  variant: "infographic" | "animation_hook",
+): React.ReactNode {
+  if (scenePayload) {
+    if (scenePayload.data.layout === "TakeawayScene" && variant === "infographic") {
+      return (
+        <TakeawayScene
+          data={scenePayload.data as TakeawaySceneData}
+          durationFrames={beatDurFrames}
+        />
+      );
+    }
+
+    return (
+      <SceneRouter
+        data={scenePayload.data}
+        variant={variant}
+        durationFrames={beatDurFrames}
+      />
+    );
+  }
+
+  if (variant === "infographic" && beatLayout) {
+    return <LayoutRenderer node={beatLayout.layout} />;
+  }
+
+  return null;
+}
+
 export const VideoComposition: React.FC<RemotionProps> = ({
   beats,
   scenes,
@@ -97,6 +169,7 @@ export const VideoComposition: React.FC<RemotionProps> = ({
   timing,
   audioSrc,
   themeName,
+  beatConfigs = {},
   cues = {},
 }) => {
   const totalBeats      = beats.length;
@@ -139,6 +212,20 @@ export const VideoComposition: React.FC<RemotionProps> = ({
             const scenePayload = scenes?.[`beat_${beatInfo.beat}`];
             // v2 fallback: BeatLayout → LayoutRenderer
             const beatLayout   = params?.[`beat_${beatInfo.beat}`];
+            const beatKey      = `beat_${beatInfo.beat}`;
+            const beatConfig   = beatConfigs[beatKey];
+            const hasMotionPlate = Boolean(
+              beatConfig &&
+              beatConfig.mode !== "infographic" &&
+              beatConfig.videoSrc
+            );
+            const canUseAnimationOverlay = supportsAnimationOverlay(scenePayload);
+            const overlayVariant = hasMotionPlate && canUseAnimationOverlay
+              ? "animation_hook"
+              : "infographic";
+            const shouldRenderOverlay = hasMotionPlate
+              ? beatConfig?.overlayEnabled !== false
+              : true;
 
             const hasContent = !!(scenePayload || beatLayout);
 
@@ -146,7 +233,7 @@ export const VideoComposition: React.FC<RemotionProps> = ({
             // If this beat has no content (e.g. bridge/gap beat from pipeline),
             // render the nearest previous beat's content at 25% opacity + blur
             // rather than leaving a black hole. No viewer ever sees dead air.
-            if (!hasContent) {
+            if (!hasContent && !hasMotionPlate) {
               const ghost = ghostContent(index, beatIds, scenes, params);
               if (!ghost) return null; // first beat with no content — nothing to persist
 
@@ -173,18 +260,22 @@ export const VideoComposition: React.FC<RemotionProps> = ({
                 index={index}
                 beatStartFrame={beatStartFrame}
               >
-                <BeatAnimateIn animateIn={animateIn} fps={fps}>
-                  {scenePayload ? (
-                    scenePayload.data.layout === "TakeawayScene"
-                      ? <TakeawayScene
-                          data={scenePayload.data as TakeawaySceneData}
-                          durationFrames={beatDurFrames}
-                        />
-                      : <SceneRouter data={scenePayload.data} />
-                  ) : beatLayout ? (
-                    <LayoutRenderer node={beatLayout.layout} />
+                <AbsoluteFill style={{ background: hasMotionPlate ? "#000000" : undefined }}>
+                  {hasMotionPlate && beatConfig?.videoSrc ? (
+                    <MotionPlate src={beatConfig.videoSrc} mode={beatConfig.mode} />
                   ) : null}
-                </BeatAnimateIn>
+
+                  {shouldRenderOverlay ? (
+                    <BeatAnimateIn animateIn={animateIn} fps={fps}>
+                      {renderSceneContent(
+                        scenePayload,
+                        beatLayout,
+                        beatDurFrames,
+                        overlayVariant,
+                      )}
+                    </BeatAnimateIn>
+                  ) : null}
+                </AbsoluteFill>
               </BeatZone>
             );
           })}

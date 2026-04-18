@@ -30,6 +30,7 @@ import {
   TriStatThreeJS,
   MetricFocusThreeJS,
   DataGridThreeJS,
+  TakeawaySceneThreeJS,
 } from "./templates/animation_hook";
 
 export type TemplateVariant = "infographic" | "animation_hook";
@@ -37,7 +38,8 @@ export type TemplateVariant = "infographic" | "animation_hook";
 export const SceneRouter: React.FC<{
   data: SceneData;
   variant?: TemplateVariant;
-}> = ({ data, variant = "infographic" }) => {
+  durationFrames?: number;
+}> = ({ data, variant = "infographic", durationFrames = 0 }) => {
 
   if (variant === "animation_hook") {
     switch (data.layout) {
@@ -45,6 +47,7 @@ export const SceneRouter: React.FC<{
       case "TriStat":       return <TriStatThreeJS data={data} />;
       case "MetricFocus":   return <MetricFocusThreeJS data={data} />;
       case "DataGrid":      return <DataGridThreeJS data={data} />;
+      case "TakeawayScene": return <TakeawaySceneThreeJS data={data} durationFrames={durationFrames} />;
       default: break; // fallthrough to infographic for unimplemented variants
     }
   }
