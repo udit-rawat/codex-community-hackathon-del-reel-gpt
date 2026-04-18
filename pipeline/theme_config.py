@@ -3,6 +3,7 @@ import os
 
 _ROOT = os.path.join(os.path.dirname(__file__), "..")
 THEME_PATH = os.path.join(_ROOT, "output", "theme.json")
+CUSTOM_THEME_PATH = os.path.join(_ROOT, "output", "custom_theme.json")
 
 DEFAULT_THEME = "deep_winter"
 
@@ -50,3 +51,37 @@ def read_theme_selection() -> str:
     except Exception:
         return DEFAULT_THEME
     return normalize_theme_name(data.get("theme"))
+
+
+def _normalize_color(value: object) -> str:
+    text = str(value or "").strip()
+    return text[:64]
+
+
+def write_custom_theme(theme: dict | None) -> dict:
+    payload = {
+        "bg": _normalize_color((theme or {}).get("bg", "")),
+        "accent": _normalize_color((theme or {}).get("accent", "")),
+        "text": _normalize_color((theme or {}).get("text", "")),
+    }
+    os.makedirs(os.path.dirname(CUSTOM_THEME_PATH), exist_ok=True)
+    with open(CUSTOM_THEME_PATH, "w") as f:
+        json.dump(payload, f, indent=2)
+    return payload
+
+
+def read_custom_theme() -> dict:
+    if not os.path.exists(CUSTOM_THEME_PATH):
+        return {"bg": "", "accent": "", "text": ""}
+    try:
+        with open(CUSTOM_THEME_PATH) as f:
+            data = json.load(f)
+    except Exception:
+        return {"bg": "", "accent": "", "text": ""}
+    if not isinstance(data, dict):
+        return {"bg": "", "accent": "", "text": ""}
+    return {
+        "bg": _normalize_color(data.get("bg", "")),
+        "accent": _normalize_color(data.get("accent", "")),
+        "text": _normalize_color(data.get("text", "")),
+    }

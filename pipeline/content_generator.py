@@ -918,7 +918,7 @@ def _call_openai_payload(prompt: str) -> str:
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY not set.")
 
-    model = os.environ.get("OPENAI_TEXT_MODEL", "gpt-4.1-mini")
+    model = os.environ.get("OPENAI_TEXT_MODEL", "gpt-4.1-nano")
     body = {
         "model": model,
         "input": prompt,
@@ -947,7 +947,7 @@ def _call_openai_payload(prompt: str) -> str:
 def _generate_openai(topic: dict, max_retries: int) -> VideoPayload:
     import re
 
-    model = os.environ.get("OPENAI_TEXT_MODEL", "gpt-5")
+    model = os.environ.get("OPENAI_TEXT_MODEL", "gpt-4.1-nano")
     print(f"[content_generator] OpenAI  model={model}  max_retries={max_retries}")
 
     base_prompt = (

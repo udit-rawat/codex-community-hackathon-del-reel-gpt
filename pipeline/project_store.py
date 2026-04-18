@@ -224,6 +224,7 @@ def _merge_beat(existing: BeatRecord | None, *, beat_id: str, index: int, total_
         cutout_enabled=existing.cutout_enabled if existing else False,
         scene_template=(scene_payload or {}).get("layout"),
         infographic_scene=scene_payload or existing.infographic_scene if existing else scene_payload,
+        render_scene_override=existing.render_scene_override if existing else None,
         timing=timing_entry if isinstance(timing_entry, dict) else existing.timing if existing else None,
         assets=assets,
     )
@@ -370,6 +371,19 @@ def update_beats(
         cutout_enabled = update.get("cutout_enabled")
         if isinstance(cutout_enabled, bool):
             beat.cutout_enabled = cutout_enabled
+
+        if "render_scene_override" in update:
+            render_scene_override = update.get("render_scene_override")
+            if render_scene_override is None:
+                beat.render_scene_override = None
+            elif isinstance(render_scene_override, dict):
+                beat.render_scene_override = render_scene_override
+
+        # Backward-compatible name used by early Phase 3 UI drafts.
+        if "infographic_scene" in update:
+            infographic_scene = update.get("infographic_scene")
+            if isinstance(infographic_scene, dict):
+                beat.render_scene_override = infographic_scene
 
     project.beats = [by_id[beat.id] for beat in project.beats]
     return save_project(project)

@@ -11,7 +11,7 @@ import requests
 
 from pipeline import logger as _logger_mod
 
-OPENAI_TEXT_MODEL = os.environ.get("OPENAI_TEXT_MODEL", "gpt-5")
+OPENAI_TEXT_MODEL = os.environ.get("OPENAI_TEXT_MODEL", "gpt-4.1-nano")
 DEFAULT_MAX_TOKENS = 4096
 
 

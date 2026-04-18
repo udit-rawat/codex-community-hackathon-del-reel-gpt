@@ -60,6 +60,7 @@ class BeatRecord(BaseModel):
     cutout_enabled: bool = False
     scene_template: str | None = None
     infographic_scene: dict | None = None
+    render_scene_override: dict | None = None
     timing: dict | None = None
     assets: BeatAssets = Field(default_factory=BeatAssets)
 

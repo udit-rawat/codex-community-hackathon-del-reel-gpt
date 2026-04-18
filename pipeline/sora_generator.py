@@ -54,8 +54,11 @@ def _max_wait() -> int:
 def _select_seconds(duration_seconds: float | None) -> str:
     if not duration_seconds:
         return "4"
-    nearest = min(ALLOWED_SECONDS, key=lambda value: abs(value - float(duration_seconds)))
-    return str(nearest)
+    duration = float(duration_seconds)
+    for allowed in ALLOWED_SECONDS:
+        if allowed >= duration:
+            return str(allowed)
+    return str(max(ALLOWED_SECONDS))
 
 
 def _relative_path(path: str) -> str:
@@ -152,7 +155,13 @@ def _wait_for_video(video_id: str) -> dict:
         status = payload.get("status")
         progress = payload.get("progress")
         get_log().info(f"[sora_generator] {video_id} status={status} progress={progress}")
+        try:
+            progress_value = float(progress)
+            print(f"Stage PROGRESS: sora_generator {max(0, min(100, progress_value)):.0f}", flush=True)
+        except (TypeError, ValueError):
+            pass
         if status == "completed":
+            print("Stage PROGRESS: sora_generator 100", flush=True)
             return payload
         if status in {"failed", "canceled"}:
             error = payload.get("error") or payload.get("last_error") or payload
@@ -267,7 +276,8 @@ def main() -> None:
             print(f"[sora_generator] {beat.id} already ready, skipping.")
             continue
 
-        print(f"[sora_generator] Beat {beat.id} mode={beat.mode.value}")
+        print(f"[sora_generator] Beat {beat.id} mode={beat.mode.value}", flush=True)
+        print("Stage PROGRESS: sora_generator 5", flush=True)
         try:
             final_payload = None
             if beat.assets.sora_job_id and beat.assets.status == AssetStatus.PENDING:
@@ -320,11 +330,11 @@ def main() -> None:
                 raise RuntimeError(f"Unexpected Sora terminal status: {final_payload}")
 
             _download_outputs(project, beat)
-            print(f"[sora_generator] Ready → {beat.id}")
+            print(f"[sora_generator] Ready → {beat.id}", flush=True)
         except Exception as error:
             _mark_failed(project, beat, error)
             failures.append(f"{beat.id}: {error}")
-            print(f"[sora_generator] Failed → {beat.id}: {error}")
+            print(f"[sora_generator] Failed → {beat.id}: {error}", flush=True)
 
     if failures:
         raise RuntimeError("Sora asset generation failed for: " + "; ".join(failures))

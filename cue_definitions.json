@@ -23,28 +23,16 @@
   ],
   "word_cues": [
     {
-      "label": "hook_reveal",
-      "trigger_word": "Phones",
+      "label": "bottleneck_show",
+      "trigger_word": "tests",
       "occurrence": 0,
       "offset_frames": -12
     },
     {
-      "label": "context_show",
-      "trigger_word": "NPUs",
+      "label": "pipeline_step",
+      "trigger_word": "patches",
       "occurrence": 0,
-      "offset_frames": -10
-    },
-    {
-      "label": "insight_highlight",
-      "trigger_word": "Hybrid",
-      "occurrence": 0,
-      "offset_frames": -10
-    },
-    {
-      "label": "takeaway_emphasize",
-      "trigger_word": "Edge",
-      "occurrence": 0,
-      "offset_frames": -10
+      "offset_frames": 0
     }
   ]
 }

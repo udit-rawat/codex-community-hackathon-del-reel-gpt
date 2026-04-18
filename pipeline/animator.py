@@ -27,7 +27,7 @@ import threading
 import time
 
 from pipeline.project_store import get_current_project_id, load_project
-from pipeline.theme_config import read_theme_selection
+from pipeline.theme_config import read_custom_theme, read_theme_selection
 
 _ROOT         = os.path.join(os.path.dirname(__file__), "..")
 PARAMS_INPUT  = os.path.join(_ROOT, "output", "params.json")
@@ -166,6 +166,7 @@ def assemble_props(
         "audioSrc":    "narration.wav",
         "totalFrames": total_frames,
         "themeName":   read_theme_selection(),
+        "customTheme": read_custom_theme(),
         "cues":        cue_map,
         "beatConfigs": beat_configs,
     }
@@ -213,6 +214,38 @@ def build_beat_configs(project_id: str | None) -> dict[str, dict]:
             "thumbnailSrc": thumbnail_src,
         }
     return beat_configs
+
+
+def apply_scene_overrides(params: dict, project_id: str | None) -> dict:
+    """
+    Apply user-edited visual text/data from project.json after content generation.
+    This keeps render-prop edits stable even when the render pipeline regenerates
+    params.json before narration and animation.
+    """
+    pid = project_id or os.environ.get("REELGPT_PROJECT_ID", "").strip() or get_current_project_id()
+    if not pid:
+        return params
+
+    project = load_project(pid)
+    if project is None:
+        return params
+
+    merged = dict(params)
+    for beat in project.beats:
+        override = beat.render_scene_override
+        if not isinstance(override, dict):
+            continue
+        existing = merged.get(beat.id)
+        if isinstance(existing, dict):
+            next_scene = dict(existing)
+            next_scene["data"] = override
+            merged[beat.id] = next_scene
+        else:
+            merged[beat.id] = {
+                "animate_in": "none",
+                "data": override,
+            }
+    return merged
 
 
 # ── Remotion execution ─────────────────────────────────────────────────────────
@@ -414,6 +447,7 @@ def main():
 
     # ── Assemble props ────────────────────────────────────────────────────────
     project_id = os.environ.get("REELGPT_PROJECT_ID", "").strip() or get_current_project_id()
+    params = apply_scene_overrides(params, project_id)
     beat_configs = build_beat_configs(project_id)
     props = assemble_props(params, scene_plan, timing, cue_map, beat_configs)
 
