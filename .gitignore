@@ -3,3 +3,11 @@ output/
 __pycache__/
 pipeline/__pycache__/
 remotion/output/
+.DS_Store
+remotion/.DS_Store
+docs/architecture.dot
+docs/architecture.mmd
+projects/
+remotion/node_modules/
+remotion/out/
+remotion/public/
