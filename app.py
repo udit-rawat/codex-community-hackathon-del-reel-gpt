@@ -12,6 +12,8 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
+from dotenv import load_dotenv
+
 from pipeline.project_context import read_project_context, write_project_context
 from pipeline.project_store import (
     duplicate_project,
@@ -32,6 +34,8 @@ OUTPUT_DIR = os.path.join(ROOT, "output")
 PROJECTS_DIR = os.path.join(ROOT, "projects")
 PROJECT_CONTEXT_PATH = os.path.join(OUTPUT_DIR, "project_context.json")
 APP_BOOT_TS = time.time()
+
+load_dotenv()
 
 RUN_LOCK = threading.Lock()
 RUN_JOB = {

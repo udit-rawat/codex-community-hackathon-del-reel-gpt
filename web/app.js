@@ -84,6 +84,7 @@ const PRICING = {
     "gpt-5": { inputPerMillion: 1.25, outputPerMillion: 10.0 },
     "gpt-5.4": { inputPerMillion: 2.5, outputPerMillion: 15.0 },
     "gpt-5.4-mini": { inputPerMillion: 0.75, outputPerMillion: 4.5 },
+    "gpt-4.1-nano": { inputPerMillion: 0.1, outputPerMillion: 0.4 },
     "gpt-4.1-mini": { inputPerMillion: 0.4, outputPerMillion: 1.6 },
     "gpt-4o-mini": { inputPerMillion: 0.15, outputPerMillion: 0.6 },
   },
@@ -467,13 +468,13 @@ function estimateNarrationMinutes() {
 
 function estimateCost() {
   const costConfig = state.costConfig || {};
-  const textModel = costConfig.textModel || "gpt-4.1-mini";
+  const textModel = costConfig.textModel || "gpt-4.1-nano";
   const ttsModel = costConfig.ttsModel || "gpt-4o-mini-tts";
-  const videoModel = costConfig.videoModel || "sora-2";
-  const videoSize = costConfig.videoSize || "720x1280";
-  const textPrice = PRICING.text[textModel] || PRICING.text["gpt-4.1-mini"];
+  const videoModel = costConfig.videoModel || "sora-2-pro";
+  const videoSize = costConfig.videoSize || "1024x1792";
+  const textPrice = PRICING.text[textModel] || PRICING.text["gpt-4.1-nano"];
   const ttsPerMinute = PRICING.ttsPerMinute[ttsModel] || PRICING.ttsPerMinute["gpt-4o-mini-tts"];
-  const soraPerSecond = PRICING.soraPerSecond[videoModel]?.[videoSize] ?? PRICING.soraPerSecond["sora-2"]["720x1280"];
+  const soraPerSecond = PRICING.soraPerSecond[videoModel]?.[videoSize] ?? PRICING.soraPerSecond["sora-2-pro"]["1024x1792"];
 
   const sourceText = `${els.title.value}\n${els.summary.value}`;
   const hasPipelineInput = Boolean(state.projectId || normalizeText(sourceText));
