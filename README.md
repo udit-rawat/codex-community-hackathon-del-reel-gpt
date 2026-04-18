@@ -5,10 +5,12 @@ Turn a topic brief into a polished vertical AI reel — script, voice, motion, a
 ## Demo
 
 **Full Pipeline Walkthrough**
-<video src="docs/demo-pipeline.mp4" controls width="100%"></video>
+
+https://github.com/udit-rawat/codex-community-hackathon-del-reel-gpt/releases/download/demo-assets/demo-pipeline.mp4
 
 **Sample Output Reel**
-<video src="docs/demo-output.mp4" controls width="100%"></video>
+
+https://github.com/udit-rawat/codex-community-hackathon-del-reel-gpt/releases/download/demo-assets/demo-output.mp4
 
 ## What It Does
 
