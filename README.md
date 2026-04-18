@@ -14,19 +14,19 @@ https://github.com/udit-rawat/codex-community-hackathon-del-reel-gpt/releases/do
 
 ## Screenshots
 
-Start with a topic, load a saved project, or pick a visual theme before generating your reel.
+**Start with a topic, load a saved project, or pick a visual theme before generating your reel.**
 ![Topic form and theme picker](docs/screenshots/1.png)
 
-Dial in your color palette, choose models for each pipeline stage, and preview your estimated spend upfront.
+**Dial in your color palette, choose models for each pipeline stage, and preview your estimated spend upfront.**
 ![Custom theme, model selection, and cost estimate](docs/screenshots/2.png)
 
-Decide how each scene moves — keep it as an infographic, trigger a Sora clip, or blend both.
+**Decide how each scene moves — keep it as an infographic, trigger a Sora clip, or blend both.**
 ![Scene plan editor](docs/screenshots/3.png)
 
-Fill in your section labels, hero values, and context chips to shape exactly what appears on screen.
+**Fill in your section labels, hero values, and context chips to shape exactly what appears on screen.**
 ![Template editor](docs/screenshots/4.png)
 
-Watch your run status live and confirm every motion asset is ready before you hit download.
+**Watch your run status live and confirm every motion asset is ready before you hit download.**
 ![Preview and run status](docs/screenshots/5.png)
 
 ## What It Does
@@ -123,3 +123,7 @@ output/remotion_props.json
 projects/<id>/project.json
 projects/<id>/assets/<scene_id>/video.mp4
 ```
+
+---
+
+**Made with love ❤️ and Codex for Codex Hackathon Delhi — April 2026**
