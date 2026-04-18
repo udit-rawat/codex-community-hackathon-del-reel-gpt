@@ -3,18 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ReelGPT Phase 2</title>
+    <title>ReelGPT Studio</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
+    <div id="cursor-glow" aria-hidden="true"></div>
     <main class="shell">
       <section class="hero">
         <div>
-          <p class="eyebrow">Phase 2 Control Room</p>
-          <h1>Input. Beats. Motion. Render.</h1>
+          <p class="eyebrow">ReelGPT Studio</p>
+          <h1>Turn ideas into reels.</h1>
           <p class="lede">
-            Hybrid reel control room. Draft narration, switch beats into animation or hybrid mode,
-            trigger Sora motion assets, then render the final MP4.
+            Start with a topic, shape the script, add motion where it matters, and render a polished vertical video.
           </p>
         </div>
         <div class="status-card">
@@ -32,11 +32,12 @@
             <div class="project-actions">
               <button id="new-project-btn" type="button" class="ghost">New Project</button>
               <button id="duplicate-project-btn" type="button" class="ghost">Duplicate Project</button>
+              <button id="demo-flow-btn" type="button" class="ghost">Load Demo Flow</button>
             </div>
             <label class="project-load">
               <span>Load Project</span>
               <div class="project-load-row">
-                <select id="project-select"></select>
+                <select id="project-select" class="project-select"></select>
                 <button id="load-project-btn" type="button" class="ghost">Load Selected</button>
               </div>
             </label>
@@ -47,7 +48,7 @@
             <input id="title" name="title" placeholder="OpenAI text-to-speech" required />
           </label>
           <label>
-            <span>Summary / source text</span>
+            <span>Brief / source notes</span>
             <textarea
               id="summary"
               name="summary"
@@ -56,30 +57,86 @@
             ></textarea>
           </label>
           <div class="actions">
-            <button type="submit" class="primary">Generate Script</button>
+            <button type="submit" class="primary">Create Reel Draft</button>
           </div>
         </form>
 
         <div class="stack">
+          <div class="demo-card">
+            <div>
+              <p class="mini-eyebrow">Example Flow</p>
+              <h3>Try a ready-made reel</h3>
+              <p>Load a complete sample brief, script direction, and motion prompt so you can see the workflow before using your own idea.</p>
+            </div>
+            <ol class="flow-steps">
+              <li>Load demo topic.</li>
+              <li>Create the first draft and scene plan.</li>
+              <li>Apply example motion setup and generate one Sora scene.</li>
+              <li>Render and download the MP4.</li>
+            </ol>
+          </div>
           <div class="panel-header">
-            <h2>Theme Preview</h2>
-            <p>Pick visual system used for preview and final Remotion render.</p>
+            <h2>Visual Style</h2>
+            <p>Choose the look used in the final video render.</p>
           </div>
           <div id="theme-grid" class="theme-grid"></div>
+          <div class="custom-theme">
+            <h3>Custom Theme</h3>
+            <p class="meta-line">Use hex, rgb(), hsl(), or CSS color names.</p>
+            <div class="custom-theme-grid">
+              <label>
+                <span>Background</span>
+                <input id="custom-bg" type="text" placeholder="#0b0d10" />
+              </label>
+              <label>
+                <span>Accent</span>
+                <input id="custom-accent" type="text" placeholder="#60a5fa" />
+              </label>
+              <label>
+                <span>Text</span>
+                <input id="custom-text" type="text" placeholder="#f8fafc" />
+              </label>
+            </div>
+            <div class="custom-swatches">
+              <span id="swatch-bg" class="swatch"></span>
+              <span id="swatch-accent" class="swatch"></span>
+              <span id="swatch-text" class="swatch"></span>
+            </div>
+            <div class="actions">
+              <button id="save-custom-theme-btn" type="button" class="ghost">Save Custom Theme</button>
+              <button id="reset-custom-theme-btn" type="button" class="ghost">Reset Custom Theme</button>
+            </div>
+          </div>
+          <div class="cost-card">
+            <div class="cost-head">
+              <div>
+                <p class="mini-eyebrow">Cost Preview</p>
+                <h3>Estimated Spend</h3>
+              </div>
+              <strong id="cost-total">$0.00</strong>
+            </div>
+            <div id="cost-lines" class="cost-lines"></div>
+            <p id="cost-note" class="cost-note">
+              Estimate only. Local Remotion rendering and local word alignment are not included.
+              Pricing reference:
+              <a href="https://platform.openai.com/docs/pricing" target="_blank" rel="noreferrer">OpenAI API pricing</a>.
+            </p>
+          </div>
         </div>
       </section>
 
       <section class="panel panel-collapsible">
         <div class="panel-header">
           <div>
-            <h2>Beat List</h2>
-            <p>Phase 2 beat-level control. Switch each beat between infographic, animation, or hybrid, then generate motion plates on demand.</p>
+            <h2>Scene Plan</h2>
+            <p>Pick which sections stay as infographic scenes and which sections get Sora motion.</p>
           </div>
           <button type="button" class="ghost panel-toggle" data-target="beats-panel-body" aria-expanded="false">Expand</button>
         </div>
         <div id="beats-panel-body" class="panel-body is-collapsed">
           <div class="actions actions-tight">
-            <button id="save-beats-btn" class="ghost" type="button">Save Beat Config</button>
+            <button id="save-beats-btn" class="ghost" type="button">Save Scene Config</button>
+            <button id="demo-beat-btn" class="ghost" type="button">Apply Example Motion Setup</button>
             <button id="generate-beats-btn" class="primary" type="button">Generate Motion Assets</button>
             <p id="project-meta" class="meta-line">No active project yet.</p>
           </div>
@@ -90,13 +147,16 @@
       <section class="panel panel-collapsible">
         <div class="panel-header">
           <div>
-            <h2>Script Review</h2>
-            <p>Edit spoken segments before narration + render.</p>
+            <h2>Template</h2>
+            <p>Edit the text and values that appear inside the rendered video.</p>
           </div>
           <button type="button" class="ghost panel-toggle" data-target="script-panel-body" aria-expanded="false">Expand</button>
         </div>
         <div id="script-panel-body" class="panel-body is-collapsed">
-          <div class="script-grid">
+          <div id="template-editor" class="template-editor">
+            <p class="template-empty">Create a reel draft first. Template props will appear here.</p>
+          </div>
+          <div class="script-grid narration-hidden" aria-hidden="true">
             <label>
               <span>Hook</span>
               <textarea id="hook" rows="3"></textarea>
@@ -124,14 +184,14 @@
       <section class="panel panel-collapsible">
         <div class="panel-header">
           <div>
-            <h2>Result + Insights</h2>
+            <h2>Preview + Status</h2>
             <p id="render-meta">No render loaded yet.</p>
           </div>
           <button type="button" class="ghost panel-toggle" data-target="result-panel-body" aria-expanded="false">Expand</button>
         </div>
         <div id="result-panel-body" class="panel-body is-collapsed">
           <div class="result-grid">
-            <div>
+            <div id="result-video-pane" class="result-video-pane is-locked">
               <video id="video" controls playsinline></video>
               <div class="actions">
                 <a id="download-video" class="primary download-link" href="#" download="reel-output.mp4">Download Video</a>
@@ -139,7 +199,7 @@
             </div>
             <div>
               <div class="panel-header">
-                <h2>Status Insights</h2>
+                <h2>Run Status</h2>
                 <p id="word-timing-state">Word-level alignment unknown.</p>
               </div>
               <div id="heuristics" class="heuristics"></div>
