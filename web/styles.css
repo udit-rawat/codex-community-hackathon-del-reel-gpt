@@ -1077,12 +1077,15 @@ a:hover,
   background: rgba(127, 29, 29, 0.18);
 }
 
-.download-link {
+.download-link,
+.download-btn {
   display: inline-flex;
   width: fit-content;
 }
 
-.download-link.is-disabled {
+.download-link.is-disabled,
+.download-btn.is-disabled,
+.download-btn:disabled {
   pointer-events: none;
   opacity: 0.55;
   cursor: not-allowed;

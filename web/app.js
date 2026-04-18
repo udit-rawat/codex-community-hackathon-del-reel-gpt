@@ -55,6 +55,7 @@ let state = {
 };
 let runPollTimer = null;
 let runPollInFlight = false;
+let runPollErrorCount = 0;
 let uiErrorHint = "";
 let activeCustomTheme = { bg: "", accent: "", text: "" };
 
@@ -273,6 +274,10 @@ function setRunControlsDisabled(disabled) {
   document.querySelectorAll(".beat-generate-btn").forEach((button) => {
     button.disabled = disabled;
   });
+  // Disable all beat card interactive elements during a run to prevent mid-render mutations.
+  document.querySelectorAll(".beat-card input, .beat-card textarea, .beat-card .mode-pill").forEach((el) => {
+    el.disabled = disabled;
+  });
 }
 
 function startRunPolling() {
@@ -292,6 +297,8 @@ async function pollRunStatus() {
   try {
     const response = await fetch(`/api/run-status?ts=${Date.now()}`, { cache: "no-store" });
     const data = await response.json();
+    runPollErrorCount = 0;
+    uiErrorHint = "";
     const activeStage = data.job?.currentStage || "";
     applyState(data, "", {
       preserveScroll: true,
@@ -317,10 +324,15 @@ async function pollRunStatus() {
     setStatus("Running", job.currentStage ? `Stage: ${formatStageName(job.currentStage)}` : "Pipeline running.");
     runPollTimer = window.setTimeout(pollRunStatus, 1000);
   } catch (error) {
-    setStatus("Offline", "Polling failed.");
-    uiErrorHint = `Live status polling failed: ${String(error)}`;
+    runPollErrorCount += 1;
+    const backoff = Math.min(2000 * (2 ** (runPollErrorCount - 1)), 30000);
+    const hint = runPollErrorCount >= 3
+      ? `Connection lost (${runPollErrorCount} failures). Retrying every ${Math.round(backoff / 1000)}s.`
+      : `Live status polling failed: ${String(error)}`;
+    setStatus("Offline", hint);
+    uiErrorHint = hint;
     renderHeuristics(state, uiErrorHint);
-    runPollTimer = window.setTimeout(pollRunStatus, 2000);
+    runPollTimer = window.setTimeout(pollRunStatus, backoff);
   } finally {
     runPollInFlight = false;
   }
@@ -866,7 +878,12 @@ function readBeatRenderOverride(card) {
   if (!raw) {
     return null;
   }
-  const parsed = JSON.parse(raw);
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`Rendered Text Props for ${card.dataset.beatId} is not valid JSON. Fix or clear the field.`);
+  }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error(`Rendered Text Props for ${card.dataset.beatId} must be a JSON object.`);
   }
@@ -1041,8 +1058,10 @@ function renderHeuristics(nextState, fallbackHint = "") {
   }
 
   if (failedAnimationBeats.length > 0) {
-    const failedIds = failedAnimationBeats.map((beat) => beat.id).join(", ");
-    lines.push({ text: `Motion assets failed on: ${failedIds}. Regenerate those scenes before rendering.`, className: "danger-insight" });
+    failedAnimationBeats.forEach((beat) => {
+      const reason = beat.assets?.last_error ? ` — ${beat.assets.last_error}` : "";
+      lines.push({ text: `Motion asset failed: ${beat.id}${reason}. Regenerate this scene before rendering.`, className: "danger-insight" });
+    });
   }
 
   if (animationBeats.length > 0 && readyAnimationBeats.length < animationBeats.length) {
@@ -1124,11 +1143,9 @@ function applyState(nextState, fallbackLog = "", options = {}) {
     els.resultVideoPane?.classList.remove("is-locked");
     els.renderMeta.textContent = `Rendered video ready. Theme: ${nextState.theme}.`;
     if (els.downloadVideo) {
-      els.downloadVideo.href = nextState.videoUrl;
+      els.downloadVideo.disabled = false;
       els.downloadVideo.classList.remove("is-disabled");
-      els.downloadVideo.setAttribute("aria-disabled", "false");
-      els.downloadVideo.style.pointerEvents = "auto";
-      els.downloadVideo.style.opacity = "1";
+      els.downloadVideo.dataset.videoUrl = nextState.videoUrl;
     }
   } else {
     if (currentVideoSrc) {
@@ -1140,11 +1157,9 @@ function applyState(nextState, fallbackLog = "", options = {}) {
     els.resultVideoPane?.classList.add("is-locked");
     els.renderMeta.textContent = "No render loaded yet.";
     if (els.downloadVideo) {
-      els.downloadVideo.removeAttribute("href");
+      els.downloadVideo.disabled = true;
       els.downloadVideo.classList.add("is-disabled");
-      els.downloadVideo.setAttribute("aria-disabled", "true");
-      els.downloadVideo.style.pointerEvents = "none";
-      els.downloadVideo.style.opacity = "0.55";
+      delete els.downloadVideo.dataset.videoUrl;
     }
   }
 
@@ -1202,6 +1217,8 @@ async function generateBeatAssets(beatId = "") {
     setStatus("No Project", "Create a reel draft first so scenes exist.");
     return;
   }
+  // Prevent double-submit
+  setRunControlsDisabled(true);
   setStatus("Generating", beatId ? `Running Sora for ${beatId}.` : "Running Sora for animation and hybrid scenes.");
   try {
     const data = await postJSON("/api/generate-beat-assets", {
@@ -1217,6 +1234,7 @@ async function generateBeatAssets(beatId = "") {
     applyState(error.data || state, error.message);
     uiErrorHint = error.message || "";
     setStatus("Failed", "Motion asset generation failed. Inspect log.");
+    setRunControlsDisabled(false);
   }
 }
 
@@ -1444,6 +1462,7 @@ els.saveCustomThemeBtn.addEventListener("click", async () => {
     setStatus("Invalid Theme", "Use valid CSS colors (hex/rgb/hsl/name).");
     return;
   }
+  els.saveCustomThemeBtn.disabled = true;
   setStatus("Saving", "Persisting custom theme.");
   try {
     const data = await postJSON("/api/custom-theme", { customTheme: payload });
@@ -1453,6 +1472,8 @@ els.saveCustomThemeBtn.addEventListener("click", async () => {
     applyState(error.data || state, error.message);
     uiErrorHint = error.message || "";
     setStatus("Failed", "Custom theme save failed.");
+  } finally {
+    els.saveCustomThemeBtn.disabled = false;
   }
 });
 
@@ -1473,6 +1494,33 @@ els.resetCustomThemeBtn.addEventListener("click", async () => {
   els.takeaway.addEventListener(eventName, renderCostEstimate);
   els.beatList.addEventListener(eventName, renderCostEstimate);
 });
+
+if (els.downloadVideo) {
+  els.downloadVideo.addEventListener("click", async () => {
+    const videoUrl = els.downloadVideo.dataset.videoUrl;
+    if (!videoUrl) return;
+    els.downloadVideo.disabled = true;
+    els.downloadVideo.textContent = "Checking…";
+    try {
+      const ready = await fetch("/api/video-ready", { cache: "no-store" }).then((r) => r.json());
+      if (!ready.ready) {
+        setStatus("Not Ready", "Video file is not ready yet. Try again after render completes.");
+        return;
+      }
+      const a = document.createElement("a");
+      a.href = videoUrl;
+      a.download = "reel-output.mp4";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch {
+      setStatus("Error", "Download check failed. Try again.");
+    } finally {
+      els.downloadVideo.disabled = false;
+      els.downloadVideo.textContent = "Download Video";
+    }
+  });
+}
 
 initPanelToggles();
 initCustomCursorAndGlow();
