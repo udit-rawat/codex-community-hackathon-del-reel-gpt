@@ -38,6 +38,7 @@ SPOKEN_OUT  = os.path.join(_ROOT, "output", "spoken_narration.json")
 PARAMS_OUT  = os.path.join(_ROOT, "output", "params.json")
 PLAN_OUT    = os.path.join(_ROOT, "output", "scene_plan.json")
 CUES_OUT    = os.path.join(_ROOT, "cue_definitions.json")
+FAST_TEXT_MODEL = "gpt-4.1-nano"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # § 1  PYDANTIC SCHEMAS
@@ -607,7 +608,7 @@ def _default_hashtags(topic: dict) -> list[str]:
 
     title_words = re.findall(r"[A-Za-z0-9]+", topic.get("title", ""))
     tags = [f"#{w[:18]}" for w in title_words[:3] if w]
-    tags.extend(["#OpenAI", "#API", "#TextToSpeech", "#AI"])
+    tags.extend(["#OpenAI", "#Codex", "#SoftwareEngineering", "#AI"])
     seen: set[str] = set()
     result: list[str] = []
     for tag in tags:
@@ -645,6 +646,29 @@ def _extract_number_token(*texts: str) -> str | None:
 def _trim_words(text: str, max_words: int) -> str:
     words = str(text or "").split()
     return " ".join(words[:max_words]).strip()
+
+
+def _sanitize_supporting_metrics(value: object) -> list[dict]:
+    if not isinstance(value, list):
+        return []
+    metrics: list[dict] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("label") or "").strip()[:10]
+        metric_value = str(item.get("value") or "").strip()[:10]
+        if not label or not metric_value:
+            continue
+        color = str(item.get("color") or "white").strip()
+        if color not in {"green", "cyan", "yellow", "red", "white"}:
+            color = "white"
+        metrics.append({
+            "label": label,
+            "value": metric_value,
+            "color": color,
+            "glow": bool(item.get("glow", False)),
+        })
+    return metrics[:3]
 
 
 def _normalize_narration_dict(narration: dict | None, topic: dict) -> dict:
@@ -766,9 +790,7 @@ def _build_metric_fallback_payload(data: dict, topic: dict) -> dict:
         if len(chips) < 2:
             chips = _default_chips(topic)
 
-    supporting_metrics = raw_ui.get("supporting_metrics")
-    if not isinstance(supporting_metrics, list):
-        supporting_metrics = []
+    supporting_metrics = _sanitize_supporting_metrics(raw_ui.get("supporting_metrics"))
 
     cue_definitions = data.get("cue_definitions")
     if not isinstance(cue_definitions, list) or len(cue_definitions) < 2:
@@ -795,6 +817,12 @@ def _build_metric_fallback_payload(data: dict, topic: dict) -> dict:
         "narration": narration,
         "cue_definitions": cue_definitions,
     }
+
+
+def _fallback_video_payload(topic: dict, reason: object | None = None) -> VideoPayload:
+    if reason:
+        print(f"[content_generator] using deterministic fallback payload: {reason}")
+    return VideoPayload.model_validate(_build_metric_fallback_payload({}, topic))
 
 
 def _normalize_payload_data(data: dict, topic: dict) -> dict:
@@ -903,6 +931,8 @@ def _normalize_payload_data(data: dict, topic: dict) -> dict:
 
 def _extract_openai_json(data: dict) -> str:
     texts: list[str] = []
+    if data.get("output_text"):
+        return str(data["output_text"]).strip()
     for item in data.get("output", []):
         for content in item.get("content", []):
             text = content.get("text")
@@ -918,11 +948,14 @@ def _call_openai_payload(prompt: str) -> str:
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY not set.")
 
-    model = os.environ.get("OPENAI_TEXT_MODEL", "gpt-4.1-nano")
+    model = os.environ.get("OPENAI_TEXT_MODEL", FAST_TEXT_MODEL).strip() or FAST_TEXT_MODEL
+    if model.startswith("gpt-5") and os.environ.get("ALLOW_REASONING_TEXT_MODEL", "") != "1":
+        print(f"[content_generator] overriding {model} with {FAST_TEXT_MODEL} for fast structured JSON.")
+        model = FAST_TEXT_MODEL
     body = {
         "model": model,
         "input": prompt,
-        "max_output_tokens": 3000,
+        "max_output_tokens": 5000,
     }
 
     response = requests.post(
@@ -947,7 +980,9 @@ def _call_openai_payload(prompt: str) -> str:
 def _generate_openai(topic: dict, max_retries: int) -> VideoPayload:
     import re
 
-    model = os.environ.get("OPENAI_TEXT_MODEL", "gpt-4.1-nano")
+    model = os.environ.get("OPENAI_TEXT_MODEL", FAST_TEXT_MODEL).strip() or FAST_TEXT_MODEL
+    if model.startswith("gpt-5") and os.environ.get("ALLOW_REASONING_TEXT_MODEL", "") != "1":
+        model = FAST_TEXT_MODEL
     print(f"[content_generator] OpenAI  model={model}  max_retries={max_retries}")
 
     base_prompt = (
@@ -999,9 +1034,9 @@ def _generate_openai(topic: dict, max_retries: int) -> VideoPayload:
                 f"{str(e)}\n"
             )
 
-    raise RuntimeError(
-        f"content_generator failed after {max_retries} attempts. "
-        f"Last error: {last_err}"
+    return _fallback_video_payload(
+        topic,
+        f"OpenAI generation failed after {max_retries} attempts. Last error: {last_err}",
     )
 # ══════════════════════════════════════════════════════════════════════════════
 # § 4  PIPELINE OUTPUT SERIALISATION

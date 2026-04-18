@@ -23,16 +23,16 @@
   ],
   "word_cues": [
     {
-      "label": "bottleneck_show",
-      "trigger_word": "tests",
+      "label": "split_enter",
+      "trigger_word": "Before",
       "occurrence": 0,
       "offset_frames": -12
     },
     {
-      "label": "pipeline_step",
-      "trigger_word": "patches",
+      "label": "split_enter",
+      "trigger_word": "After",
       "occurrence": 0,
-      "offset_frames": 0
+      "offset_frames": -12
     }
   ]
 }

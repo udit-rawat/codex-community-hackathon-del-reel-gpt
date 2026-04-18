@@ -11,8 +11,8 @@ from pipeline.project_schema import AssetRef, AssetStatus, BeatMode
 from pipeline.project_store import get_current_project_id, get_project_dir, load_project, save_project
 
 API_BASE = "https://api.openai.com/v1/videos"
-DEFAULT_MODEL = "sora-2"
-DEFAULT_SIZE = "720x1280"
+DEFAULT_MODEL = "sora-2-pro"
+DEFAULT_SIZE = "1024x1792"
 ALLOWED_SECONDS = (4, 8, 12)
 POLL_INTERVAL_SECONDS = 10
 MAX_WAIT_SECONDS = 1200

@@ -26,7 +26,7 @@ TIMING_PATH = os.path.join(os.path.dirname(
     __file__), "..", "output", "narration_timing.json")
 
 TTS_MODEL = os.environ.get("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
-VOICE_NAME = os.environ.get("OPENAI_TTS_VOICE", "coral")
+VOICE_NAME = os.environ.get("OPENAI_TTS_VOICE", "marin")
 
 # Directorial prompt sent to OpenAI TTS to shape delivery.
 _DEFAULT_VOICE_DIRECTIVE = (
