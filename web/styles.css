@@ -297,7 +297,8 @@ h1 {
 }
 
 .grid-two {
-  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+  gap: 28px;
   margin-bottom: 20px;
 }
 
@@ -426,6 +427,7 @@ select:focus {
   border-radius: 18px;
   border: 1px solid rgba(148, 163, 184, 0.2);
   background: rgba(6, 10, 18, 0.42);
+  align-content: start;
 }
 
 .demo-card,
@@ -565,10 +567,12 @@ select:focus {
 }
 
 .theme-card {
-  padding: 16px;
-  border-radius: 20px;
+  padding: 0;
+  border-radius: 14px;
   cursor: pointer;
-  transition: transform 140ms ease, border-color 140ms ease;
+  overflow: hidden;
+  transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  border: 2px solid transparent;
 }
 
 .theme-card:hover {
@@ -576,35 +580,40 @@ select:focus {
 }
 
 .theme-card.selected {
-  border-color: rgba(255, 255, 255, 0.42);
+  border-color: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.1), 0 8px 24px rgba(0,0,0,0.4);
 }
 
 .theme-preview {
-  height: 132px;
-  border-radius: 16px;
+  height: 148px;
   padding: 14px;
   display: grid;
   align-content: space-between;
   overflow: hidden;
+  position: relative;
 }
 
 .theme-preview .mini-label {
   font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  opacity: 0.75;
+  opacity: 0.8;
 }
 
 .theme-preview .mini-number {
   font-family: var(--font-display);
-  font-size: 42px;
+  font-size: 44px;
   line-height: 0.9;
+  font-weight: 700;
 }
 
-.theme-swatches {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
+.theme-accent-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  opacity: 0.9;
 }
 
 .swatch {
@@ -727,39 +736,58 @@ select:focus {
 
 button,
 .ghost {
-  border: 0;
-  border-radius: 999px;
-  padding: 12px 18px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
   text-decoration: none;
   cursor: pointer;
   width: fit-content;
-  min-height: 44px;
+  min-height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: box-shadow 160ms ease, transform 160ms ease, border-color 160ms ease;
+  gap: 6px;
+  transition: box-shadow 140ms ease, transform 120ms ease, background 140ms ease, border-color 140ms ease;
 }
 
 button:disabled {
-  opacity: 0.52;
+  opacity: 0.42;
   cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
 }
 
 .primary {
-  background: linear-gradient(135deg, var(--accent), #2563eb);
-  color: #eff6ff;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  border-color: rgba(96, 165, 250, 0.4);
+  color: #fff;
   font-weight: 600;
   white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+
+.primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #60a5fa 0%, #2563eb 100%);
+  box-shadow: 0 0 0 2px rgba(96,165,250,0.35), 0 4px 12px rgba(37,99,235,0.4);
+  transform: translateY(-1px);
 }
 
 .ghost {
-  background: rgba(148, 163, 184, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
   color: var(--text);
   white-space: nowrap;
 }
 
-button:hover,
-.ghost:hover,
+.ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
 a:hover,
 .theme-card:hover,
 .mode-pill:hover,
@@ -774,8 +802,6 @@ video:hover {
   box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.35), 0 0 24px rgba(96, 165, 250, 0.24);
 }
 
-button:hover,
-.ghost:hover,
 a:hover,
 .mode-pill:hover,
 .theme-card:hover,
@@ -1075,6 +1101,58 @@ a:hover,
 .heuristics p.danger-insight {
   border-color: rgba(251, 113, 133, 0.42);
   background: rgba(127, 29, 29, 0.18);
+}
+
+.model-config-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.model-config-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.model-config-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.model-config-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.model-config-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.model-config-grid select {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: inherit;
+  font-size: 0.8rem;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+}
+
+.model-config-grid select:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 .download-link,
