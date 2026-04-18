@@ -37,9 +37,9 @@ Browser UI → app.py (HTTP API) → run.py (orchestrator)
 
 | Layer | Tech |
 |---|---|
-| Script + scenes | `gpt-4.1-mini` |
-| Voice | `gpt-4o-mini-tts` (OpenAI TTS) |
-| Motion clips | `sora-2` @ 720×1280 |
+| Script + scenes | `gpt-4.1-nano` |
+| Voice | `gpt-4o-mini-tts` with `marin` voice |
+| Motion clips | `sora-2-pro` @ 1024×1792 |
 | Render | Remotion (`VideoComposition.tsx`) |
 | API server | `app.py` (Python HTTP) |
 
@@ -58,8 +58,8 @@ pip install openai-whisper
 
 Optional Sora config:
 ```bash
-export OPENAI_VIDEO_MODEL="sora-2"
-export OPENAI_VIDEO_SIZE="720x1280"
+export OPENAI_VIDEO_MODEL="sora-2-pro"
+export OPENAI_VIDEO_SIZE="1024x1792"
 ```
 
 ## Run
