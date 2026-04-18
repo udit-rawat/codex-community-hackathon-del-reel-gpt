@@ -27,6 +27,7 @@ from pipeline.project_store import (
 )
 from pipeline.theme_config import THEMES, normalize_theme_name, read_theme_selection
 from pipeline.theme_config import read_custom_theme, write_custom_theme
+from pipeline.model_config import MODELS, apply_to_env, read_model_config, write_model_config
 
 ROOT = os.path.dirname(__file__)
 WEB_DIR = os.path.join(ROOT, "web")
@@ -40,6 +41,9 @@ load_dotenv()
 # Warn early if API key is missing so the error surfaces at boot, not mid-run.
 if not os.environ.get("OPENAI_API_KEY", "").strip():
     print("[ui] WARNING: OPENAI_API_KEY is not set. Pipeline runs will fail.", flush=True)
+
+# Apply persisted model config so subprocesses inherit the right model env vars.
+apply_to_env(read_model_config())
 
 RUN_LOCK = threading.Lock()
 RUN_JOB = {
@@ -122,6 +126,8 @@ def _load_state() -> dict:
         "videoUrl": _file_url(video_path) if _is_fresh_file(video_path) else None,
         "pipelineLogUrl": _file_url(pipeline_log_path) if _is_fresh_file(pipeline_log_path) else None,
         "hasWordTimings": bool(word_timings),
+        "modelConfig": read_model_config(),
+        "models": MODELS,
         "costConfig": {
             "textModel": os.environ.get("OPENAI_TEXT_MODEL", "gpt-4.1-nano").strip() or "gpt-4.1-nano",
             "ttsModel": os.environ.get("OPENAI_TTS_MODEL", "gpt-4o-mini-tts").strip() or "gpt-4o-mini-tts",
@@ -539,6 +545,17 @@ class AppHandler(BaseHTTPRequestHandler):
                 summary=project.topic.summary,
                 theme=project.theme_name,
             )
+            return self._send_json(HTTPStatus.OK, _payload())
+
+        if parsed.path == "/api/model-config":
+            config = body.get("modelConfig")
+            if not isinstance(config, dict):
+                return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "modelConfig object required"})
+            try:
+                saved = write_model_config(config)
+                apply_to_env(saved)
+            except Exception as e:
+                return self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(e)})
             return self._send_json(HTTPStatus.OK, _payload())
 
         if parsed.path == "/api/custom-theme":
