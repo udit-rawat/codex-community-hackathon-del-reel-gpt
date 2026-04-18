@@ -3,28 +3,45 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ReelGPT Phase 1</title>
+    <title>ReelGPT Phase 2</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="shell">
       <section class="hero">
         <div>
-          <p class="eyebrow">Phase 1 Control Room</p>
-          <h1>Input. Review. Theme. Render.</h1>
+          <p class="eyebrow">Phase 2 Control Room</p>
+          <h1>Input. Beats. Motion. Render.</h1>
           <p class="lede">
-            Minimal UI for infographic reels. Generate draft narration, edit it before TTS,
-            preview theme direction, then render final MP4.
+            Hybrid reel control room. Draft narration, switch beats into animation or hybrid mode,
+            trigger Sora motion assets, then render the final MP4.
           </p>
         </div>
         <div class="status-card">
           <span id="status-pill" class="status-pill">Idle</span>
           <p id="status-text">Waiting for input.</p>
+          <p id="next-task-text" class="next-task-text">Next task will appear when a run starts.</p>
+          <div id="job-progress" class="job-progress"></div>
+          <div id="job-sessions" class="job-sessions"></div>
         </div>
       </section>
 
       <section class="panel grid-two">
         <form id="topic-form" class="stack">
+          <div class="project-lifecycle">
+            <div class="project-actions">
+              <button id="new-project-btn" type="button" class="ghost">New Project</button>
+              <button id="duplicate-project-btn" type="button" class="ghost">Duplicate Project</button>
+            </div>
+            <label class="project-load">
+              <span>Load Project</span>
+              <div class="project-load-row">
+                <select id="project-select"></select>
+                <button id="load-project-btn" type="button" class="ghost">Load Selected</button>
+              </div>
+            </label>
+          </div>
+          <p id="current-project-id" class="meta-line">Current project: none</p>
           <label>
             <span>Title</span>
             <input id="title" name="title" placeholder="OpenAI text-to-speech" required />
@@ -52,49 +69,82 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel panel-collapsible">
         <div class="panel-header">
-          <h2>Script Review</h2>
-          <p>Edit spoken segments before narration + render.</p>
+          <div>
+            <h2>Beat List</h2>
+            <p>Phase 2 beat-level control. Switch each beat between infographic, animation, or hybrid, then generate motion plates on demand.</p>
+          </div>
+          <button type="button" class="ghost panel-toggle" data-target="beats-panel-body" aria-expanded="false">Expand</button>
         </div>
-        <div class="script-grid">
-          <label>
-            <span>Hook</span>
-            <textarea id="hook" rows="3"></textarea>
-          </label>
-          <label>
-            <span>Concept 1</span>
-            <textarea id="concept_1" rows="4"></textarea>
-          </label>
-          <label>
-            <span>Concept 2</span>
-            <textarea id="concept_2" rows="4"></textarea>
-          </label>
-          <label>
-            <span>Takeaway / CTA</span>
-            <textarea id="takeaway_cta" rows="3"></textarea>
-          </label>
-        </div>
-        <div class="actions">
-          <button id="render-btn" class="primary">Render Video</button>
-          <a id="pipeline-log" class="ghost" href="#" target="_blank" rel="noreferrer">Pipeline Log</a>
+        <div id="beats-panel-body" class="panel-body is-collapsed">
+          <div class="actions actions-tight">
+            <button id="save-beats-btn" class="ghost" type="button">Save Beat Config</button>
+            <button id="generate-beats-btn" class="primary" type="button">Generate Motion Assets</button>
+            <p id="project-meta" class="meta-line">No active project yet.</p>
+          </div>
+          <div id="beat-list" class="beat-list"></div>
         </div>
       </section>
 
-      <section class="panel result-grid">
-        <div>
-          <div class="panel-header">
-            <h2>Result</h2>
+      <section class="panel panel-collapsible">
+        <div class="panel-header">
+          <div>
+            <h2>Script Review</h2>
+            <p>Edit spoken segments before narration + render.</p>
+          </div>
+          <button type="button" class="ghost panel-toggle" data-target="script-panel-body" aria-expanded="false">Expand</button>
+        </div>
+        <div id="script-panel-body" class="panel-body is-collapsed">
+          <div class="script-grid">
+            <label>
+              <span>Hook</span>
+              <textarea id="hook" rows="3"></textarea>
+            </label>
+            <label>
+              <span>Concept 1</span>
+              <textarea id="concept_1" rows="4"></textarea>
+            </label>
+            <label>
+              <span>Concept 2</span>
+              <textarea id="concept_2" rows="4"></textarea>
+            </label>
+            <label>
+              <span>Takeaway / CTA</span>
+              <textarea id="takeaway_cta" rows="3"></textarea>
+            </label>
+          </div>
+          <div class="actions">
+            <button id="render-btn" class="primary">Render Video</button>
+            <a id="pipeline-log" class="ghost" href="#" target="_blank" rel="noreferrer">Pipeline Log</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel panel-collapsible">
+        <div class="panel-header">
+          <div>
+            <h2>Result + Insights</h2>
             <p id="render-meta">No render loaded yet.</p>
           </div>
-          <video id="video" controls playsinline></video>
+          <button type="button" class="ghost panel-toggle" data-target="result-panel-body" aria-expanded="false">Expand</button>
         </div>
-        <div>
-          <div class="panel-header">
-            <h2>Run Log</h2>
-            <p id="word-timing-state">Word-level alignment unknown.</p>
+        <div id="result-panel-body" class="panel-body is-collapsed">
+          <div class="result-grid">
+            <div>
+              <video id="video" controls playsinline></video>
+              <div class="actions">
+                <a id="download-video" class="primary download-link" href="#" download="reel-output.mp4">Download Video</a>
+              </div>
+            </div>
+            <div>
+              <div class="panel-header">
+                <h2>Status Insights</h2>
+                <p id="word-timing-state">Word-level alignment unknown.</p>
+              </div>
+              <div id="heuristics" class="heuristics"></div>
+            </div>
           </div>
-          <pre id="log-output"></pre>
         </div>
       </section>
     </main>
