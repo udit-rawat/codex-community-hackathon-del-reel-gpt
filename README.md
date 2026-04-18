@@ -12,6 +12,23 @@ https://github.com/udit-rawat/codex-community-hackathon-del-reel-gpt/releases/do
 
 https://github.com/udit-rawat/codex-community-hackathon-del-reel-gpt/releases/download/demo-assets/demo-output.mp4
 
+## Screenshots
+
+Start with a topic, load a saved project, or pick a visual theme before generating your reel.
+![Topic form and theme picker](docs/screenshots/1.png)
+
+Dial in your color palette, choose models for each pipeline stage, and preview your estimated spend upfront.
+![Custom theme, model selection, and cost estimate](docs/screenshots/2.png)
+
+Decide how each scene moves — keep it as an infographic, trigger a Sora clip, or blend both.
+![Scene plan editor](docs/screenshots/3.png)
+
+Fill in your section labels, hero values, and context chips to shape exactly what appears on screen.
+![Template editor](docs/screenshots/4.png)
+
+Watch your run status live and confirm every motion asset is ready before you hit download.
+![Preview and run status](docs/screenshots/5.png)
+
 ## What It Does
 
 - Draft a reel from a title and source notes
