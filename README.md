@@ -97,6 +97,12 @@ Browser UI
 
 ## SVG Diagram Source
 
+Generated architecture SVG:
+
+```text
+/Users/uditrawat/Downloads/reelgpt_studio_architecture.svg
+```
+
 Use this Mermaid block to generate an architecture SVG.
 
 ```mermaid
@@ -266,7 +272,7 @@ Sora estimates use selected motion scenes and the configured video model/size.
 Current default config:
 
 ```text
-OPENAI_TEXT_MODEL=gpt-5
+OPENAI_TEXT_MODEL=gpt-4.1-mini
 OPENAI_TTS_MODEL=gpt-4o-mini-tts
 OPENAI_VIDEO_MODEL=sora-2
 OPENAI_VIDEO_SIZE=720x1280
