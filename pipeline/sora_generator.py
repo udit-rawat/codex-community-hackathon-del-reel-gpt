@@ -14,8 +14,8 @@ API_BASE = "https://api.openai.com/v1/videos"
 DEFAULT_MODEL = "sora-2-pro"
 DEFAULT_SIZE = "1024x1792"
 ALLOWED_SECONDS = (4, 8, 12)
-POLL_INTERVAL_SECONDS = 10
-MAX_WAIT_SECONDS = 1200
+POLL_INTERVAL_SECONDS = 5
+MAX_WAIT_SECONDS = 600
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 
 
@@ -103,6 +103,20 @@ def _beat_prompt(beat) -> str:
     return prompt
 
 
+def _retry_request(fn, *args, max_retries: int = 3, **kwargs) -> requests.Response:
+    """Call fn(*args, **kwargs) and retry on HTTP 429 with exponential backoff."""
+    for attempt in range(max_retries):
+        response = fn(*args, **kwargs)
+        if response.status_code == 429:
+            wait = 30 * (2 ** attempt)
+            get_log().warning(f"[sora_generator] Rate limited (429). Retrying in {wait}s (attempt {attempt + 1}/{max_retries})")
+            print(f"[sora_generator] Rate limited. Waiting {wait}s before retry.", flush=True)
+            time.sleep(wait)
+            continue
+        return response
+    return response
+
+
 def _create_video(prompt: str, *, seconds: str, size: str, reference_path: str | None) -> dict:
     multipart: dict[str, tuple[str | None, object, str] | tuple[None, str]] = {
         "model": (None, _video_model()),
@@ -121,7 +135,8 @@ def _create_video(prompt: str, *, seconds: str, size: str, reference_path: str |
         )
 
     try:
-        response = requests.post(
+        response = _retry_request(
+            requests.post,
             API_BASE,
             headers=_headers(),
             files=multipart,
@@ -137,7 +152,8 @@ def _create_video(prompt: str, *, seconds: str, size: str, reference_path: str |
 
 
 def _get_video(video_id: str) -> dict:
-    response = requests.get(
+    response = _retry_request(
+        requests.get,
         f"{API_BASE}/{video_id}",
         headers=_headers(),
         timeout=180,
@@ -149,7 +165,8 @@ def _get_video(video_id: str) -> dict:
 
 def _wait_for_video(video_id: str) -> dict:
     deadline = time.time() + _max_wait()
-    interval = _poll_interval()
+    base_interval = _poll_interval()
+    consecutive_queue_polls = 0
     while time.time() < deadline:
         payload = _get_video(video_id)
         status = payload.get("status")
@@ -166,6 +183,13 @@ def _wait_for_video(video_id: str) -> dict:
         if status in {"failed", "canceled"}:
             error = payload.get("error") or payload.get("last_error") or payload
             raise RuntimeError(f"Sora video failed: {error}")
+        # Exponential backoff while queued (up to 30s), normal interval while in_progress
+        if status == "queued":
+            consecutive_queue_polls += 1
+            interval = min(base_interval * (2 ** min(consecutive_queue_polls - 1, 3)), 30)
+        else:
+            consecutive_queue_polls = 0
+            interval = base_interval
         time.sleep(interval)
     raise RuntimeError(f"Sora video timed out after {_max_wait()} seconds: {video_id}")
 
@@ -289,6 +313,10 @@ def main() -> None:
                 elif current_status in {"queued", "in_progress"}:
                     final_payload = _wait_for_video(beat.assets.sora_job_id)
                 else:
+                    # Failed/canceled remote job — clear job ID and resubmit
+                    print(f"[sora_generator] Remote job {beat.assets.sora_job_id} status={current_status}, resubmitting.")
+                    beat.assets.sora_job_id = None
+                    save_project(project)
                     prompt = _beat_prompt(beat)
                     _mark_pending(project, beat)
                     reference_path = _resolve_local_path(
