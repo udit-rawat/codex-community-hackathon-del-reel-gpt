@@ -37,6 +37,10 @@ APP_BOOT_TS = time.time()
 
 load_dotenv()
 
+# Warn early if API key is missing so the error surfaces at boot, not mid-run.
+if not os.environ.get("OPENAI_API_KEY", "").strip():
+    print("[ui] WARNING: OPENAI_API_KEY is not set. Pipeline runs will fail.", flush=True)
+
 RUN_LOCK = threading.Lock()
 RUN_JOB = {
     "session_id": None,
@@ -89,15 +93,14 @@ def _load_state() -> dict:
     video_path = os.path.join(OUTPUT_DIR, "video.mp4")
     pipeline_log_path = os.path.join(OUTPUT_DIR, "pipeline.log")
 
-    # Fresh-session behavior:
-    # only auto-load persisted context/outputs written after this UI server boot.
-    # This prevents stale project/topic/video from auto-hydrating a "new" session.
-    context = read_project_context() if _is_fresh_file(PROJECT_CONTEXT_PATH) else {}
+    # Always restore the last active project on page load / server restart.
+    # Only topic/script/video outputs require fresh-file checks (they're ephemeral).
+    context = read_project_context()
     context_project_id = str(context.get("project_id", "")).strip()
     project = load_project(context_project_id) if context_project_id else None
-    if project is None and _is_fresh_file(PROJECT_CONTEXT_PATH):
+    if project is None:
         project = load_current_project()
-    if project is None and _is_fresh_file(PROJECT_CONTEXT_PATH):
+    if project is None:
         fallback_project_id = get_current_project_id()
         if fallback_project_id:
             project = load_project(fallback_project_id)
@@ -375,9 +378,13 @@ class AppHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _send_file(self, path: str) -> None:
+    def _send_file(self, path: str, *, download_name: str | None = None) -> None:
         if not os.path.exists(path) or not os.path.isfile(path):
             self.send_error(HTTPStatus.NOT_FOUND, "File not found")
+            return
+        size = os.path.getsize(path)
+        if size == 0:
+            self.send_error(HTTPStatus.NOT_FOUND, "File is empty")
             return
         with open(path, "rb") as f:
             data = f.read()
@@ -385,11 +392,16 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", mime)
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-cache, must-revalidate")
+        if download_name:
+            self.send_header("Content-Disposition", f'attachment; filename="{download_name}"')
         self.end_headers()
         self.wfile.write(data)
 
     def _parse_body(self) -> dict:
         length = int(self.headers.get("Content-Length", "0"))
+        if length > 10 * 1024 * 1024:
+            raise ValueError("Request body exceeds 10MB limit")
         raw = self.rfile.read(length) if length else b"{}"
         return json.loads(raw.decode("utf-8") or "{}")
 
@@ -410,11 +422,16 @@ class AppHandler(BaseHTTPRequestHandler):
             return self._send_json(HTTPStatus.OK, _payload())
         if path == "/api/projects":
             return self._send_json(HTTPStatus.OK, {"projects": list_projects()})
+        if path == "/api/video-ready":
+            video_path = os.path.join(OUTPUT_DIR, "video.mp4")
+            ready = os.path.exists(video_path) and os.path.getsize(video_path) > 0
+            return self._send_json(HTTPStatus.OK, {"ready": ready})
         if path.startswith("/output/"):
             target = os.path.normpath(os.path.join(ROOT, path.lstrip("/")))
             if os.path.commonpath([OUTPUT_DIR, target]) != OUTPUT_DIR:
                 return self.send_error(HTTPStatus.FORBIDDEN, "Forbidden")
-            return self._send_file(target)
+            download_name = "reel-output.mp4" if target.endswith(".mp4") else None
+            return self._send_file(target, download_name=download_name)
         if path.startswith("/projects/"):
             target = os.path.normpath(os.path.join(ROOT, path.lstrip("/")))
             if os.path.commonpath([PROJECTS_DIR, target]) != PROJECTS_DIR:
@@ -425,7 +442,12 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        body = self._parse_body()
+        try:
+            body = self._parse_body()
+        except ValueError as e:
+            return self._send_json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": str(e)})
+        except Exception as e:
+            return self._send_json(HTTPStatus.BAD_REQUEST, {"error": f"Invalid request body: {e}"})
 
         if parsed.path == "/api/generate-script":
             project_id = str(body.get("projectId", "")).strip()
