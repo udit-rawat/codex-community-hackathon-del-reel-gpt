@@ -2,6 +2,14 @@
 
 Turn a topic brief into a polished vertical AI reel — script, voice, motion, and MP4 — without touching a video editor.
 
+## Demo
+
+**Full Pipeline Walkthrough**
+<video src="docs/demo-pipeline.mp4" controls width="100%"></video>
+
+**Sample Output Reel**
+<video src="docs/demo-output.mp4" controls width="100%"></video>
+
 ## What It Does
 
 - Draft a reel from a title and source notes
