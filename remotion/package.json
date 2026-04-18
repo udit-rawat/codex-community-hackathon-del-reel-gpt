@@ -1,0 +1,35 @@
+{
+  "name": "adamax-remotion",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Remotion rendering engine for AdaMax automated video pipeline",
+  "scripts": {
+    "start": "npx remotion studio",
+    "render": "npx remotion render src/index.ts VideoComposition output/video.mp4 --gl=angle",
+    "render:theme": "npx remotion render src/index.ts ThemeTest out/ThemeTest.mp4 --gl=angle",
+    "render:demo": "npx remotion render src/index.ts PhosphorDemo out/PhosphorDemo.mp4 --gl=angle",
+    "render:mvp-info": "npx remotion render src/index.ts TemplateMVP-Infographic out/TemplateMVP_Infographic.mp4 --gl=angle",
+    "render:mvp-threejs": "npx remotion render src/index.ts TemplateMVP-ThreeJS out/TemplateMVP_ThreeJS.mp4 --gl=angle",
+    "render:mvp": "npx remotion render src/index.ts TemplateMVP-Combined out/TemplateMVP_Combined.mp4 --gl=angle",
+    "render:cpu": "npx remotion render src/index.ts QwenPawCPU out/QwenPawCPU.mp4 --gl=angle"
+  },
+  "dependencies": {
+    "@react-three/drei": "^9.120.9",
+    "@react-three/fiber": "^8.18.0",
+    "@remotion/cli": "^4.0.0",
+    "@remotion/media-utils": "^4.0.441",
+    "@remotion/three": "^4.0.446",
+    "@remotion/zod-types": "^4.0.448",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "remotion": "^4.0.0",
+    "three": "^0.183.2",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/three": "^0.183.1",
+    "typescript": "^5.3.0"
+  }
+}

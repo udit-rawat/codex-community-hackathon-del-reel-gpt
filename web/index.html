@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ReelGPT Phase 1</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Phase 1 Control Room</p>
+          <h1>Input. Review. Theme. Render.</h1>
+          <p class="lede">
+            Minimal UI for infographic reels. Generate draft narration, edit it before TTS,
+            preview theme direction, then render final MP4.
+          </p>
+        </div>
+        <div class="status-card">
+          <span id="status-pill" class="status-pill">Idle</span>
+          <p id="status-text">Waiting for input.</p>
+        </div>
+      </section>
+
+      <section class="panel grid-two">
+        <form id="topic-form" class="stack">
+          <label>
+            <span>Title</span>
+            <input id="title" name="title" placeholder="OpenAI text-to-speech" required />
+          </label>
+          <label>
+            <span>Summary / source text</span>
+            <textarea
+              id="summary"
+              name="summary"
+              rows="6"
+              placeholder="OpenAI provides text and audio APIs..."
+            ></textarea>
+          </label>
+          <div class="actions">
+            <button type="submit" class="primary">Generate Script</button>
+          </div>
+        </form>
+
+        <div class="stack">
+          <div class="panel-header">
+            <h2>Theme Preview</h2>
+            <p>Pick visual system used for preview and final Remotion render.</p>
+          </div>
+          <div id="theme-grid" class="theme-grid"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Script Review</h2>
+          <p>Edit spoken segments before narration + render.</p>
+        </div>
+        <div class="script-grid">
+          <label>
+            <span>Hook</span>
+            <textarea id="hook" rows="3"></textarea>
+          </label>
+          <label>
+            <span>Concept 1</span>
+            <textarea id="concept_1" rows="4"></textarea>
+          </label>
+          <label>
+            <span>Concept 2</span>
+            <textarea id="concept_2" rows="4"></textarea>
+          </label>
+          <label>
+            <span>Takeaway / CTA</span>
+            <textarea id="takeaway_cta" rows="3"></textarea>
+          </label>
+        </div>
+        <div class="actions">
+          <button id="render-btn" class="primary">Render Video</button>
+          <a id="pipeline-log" class="ghost" href="#" target="_blank" rel="noreferrer">Pipeline Log</a>
+        </div>
+      </section>
+
+      <section class="panel result-grid">
+        <div>
+          <div class="panel-header">
+            <h2>Result</h2>
+            <p id="render-meta">No render loaded yet.</p>
+          </div>
+          <video id="video" controls playsinline></video>
+        </div>
+        <div>
+          <div class="panel-header">
+            <h2>Run Log</h2>
+            <p id="word-timing-state">Word-level alignment unknown.</p>
+          </div>
+          <pre id="log-output"></pre>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>
