@@ -41,6 +41,12 @@ const els = {
   costTotal: document.querySelector("#cost-total"),
   costLines: document.querySelector("#cost-lines"),
   costNote: document.querySelector("#cost-note"),
+  modelText: document.querySelector("#model-text"),
+  modelTts: document.querySelector("#model-tts"),
+  modelTtsVoice: document.querySelector("#model-tts-voice"),
+  modelVideo: document.querySelector("#model-video"),
+  modelVideoSize: document.querySelector("#model-video-size"),
+  saveModelConfigBtn: document.querySelector("#save-model-config-btn"),
   topicForm: document.querySelector("#topic-form"),
   renderBtn: document.querySelector("#render-btn"),
 };
@@ -370,14 +376,11 @@ function renderThemes(themes, activeTheme) {
     card.className = "theme-card";
     card.dataset.theme = key;
     card.innerHTML = `
-      <div class="theme-preview" style="background: linear-gradient(180deg, ${cardBg} 0%, rgba(15,23,42,0.92) 100%); color: white;">
+      <div class="theme-preview" style="background: ${cardBg}; color: white;">
         <div class="mini-label">${cardLabel}</div>
         <div class="mini-number" style="color:${cardAccent};">42%</div>
         <div class="mini-label">${cardDescription}</div>
-      </div>
-      <div class="theme-swatches">
-        <span class="swatch" style="background:${cardAccent};"></span>
-        <span class="swatch" style="background:${cardBg};"></span>
+        <div class="theme-accent-bar" style="background:${cardAccent};"></div>
       </div>
     `;
     card.addEventListener("click", () => pickTheme(key));
@@ -1125,6 +1128,8 @@ function applyState(nextState, fallbackLog = "", options = {}) {
     renderBeats(nextState.project);
     renderTemplateEditor(nextState.project);
     renderProjectSelector(state.projects, nextState.projectId);
+    if (nextState.models) populateModelSelects(nextState.models);
+    if (nextState.modelConfig) applyModelConfig(nextState.modelConfig);
   }
   renderJob(nextState.job);
   renderJobSessions(nextState.jobSessions || (nextState.job ? [nextState.job] : []));
@@ -1521,6 +1526,79 @@ if (els.downloadVideo) {
     }
   });
 }
+
+function populateModelSelects(models) {
+  const map = [
+    [els.modelText,      models.text],
+    [els.modelTts,       models.tts],
+    [els.modelTtsVoice,  models.ttsVoice],
+    [els.modelVideo,     models.video],
+    [els.modelVideoSize, models.videoSize],
+  ];
+  map.forEach(([select, options]) => {
+    if (!select || !Array.isArray(options)) return;
+    const current = select.value;
+    select.innerHTML = "";
+    options.forEach(({ value, label }) => {
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = label;
+      select.appendChild(opt);
+    });
+    if (current) select.value = current;
+  });
+}
+
+function applyModelConfig(config) {
+  if (!config) return;
+  const map = [
+    [els.modelText,      config.textModel],
+    [els.modelTts,       config.ttsModel],
+    [els.modelTtsVoice,  config.ttsVoice],
+    [els.modelVideo,     config.videoModel],
+    [els.modelVideoSize, config.videoSize],
+  ];
+  map.forEach(([select, value]) => {
+    if (select && value) select.value = value;
+  });
+}
+
+function readModelConfig() {
+  return {
+    textModel:  els.modelText?.value || "gpt-4.1-nano",
+    ttsModel:   els.modelTts?.value || "gpt-4o-mini-tts",
+    ttsVoice:   els.modelTtsVoice?.value || "marin",
+    videoModel: els.modelVideo?.value || "sora-2-pro",
+    videoSize:  els.modelVideoSize?.value || "1024x1792",
+  };
+}
+
+els.saveModelConfigBtn?.addEventListener("click", async () => {
+  els.saveModelConfigBtn.disabled = true;
+  setStatus("Saving", "Saving model configuration.");
+  try {
+    const data = await postJSON("/api/model-config", { modelConfig: readModelConfig() });
+    applyState(data);
+    setStatus("Saved", "Model config saved. Takes effect on next run.");
+  } catch (error) {
+    uiErrorHint = error.message || "";
+    setStatus("Failed", "Model config save failed.");
+  } finally {
+    els.saveModelConfigBtn.disabled = false;
+  }
+});
+
+[els.modelText, els.modelTts, els.modelVideo, els.modelVideoSize].forEach((select) => {
+  select?.addEventListener("change", () => {
+    if (state.costConfig) {
+      state.costConfig.textModel = els.modelText?.value || state.costConfig.textModel;
+      state.costConfig.ttsModel = els.modelTts?.value || state.costConfig.ttsModel;
+      state.costConfig.videoModel = els.modelVideo?.value || state.costConfig.videoModel;
+      state.costConfig.videoSize = els.modelVideoSize?.value || state.costConfig.videoSize;
+    }
+    renderCostEstimate();
+  });
+});
 
 initPanelToggles();
 initCustomCursorAndGlow();
