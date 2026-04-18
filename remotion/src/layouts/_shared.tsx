@@ -25,7 +25,7 @@
 
 import React, { useRef, useLayoutEffect } from "react";
 import { interpolate } from "remotion";
-import type { NodeColor } from "../types";
+import type { CustomTheme, NodeColor } from "../types";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -93,19 +93,39 @@ export let FONT = activeTheme.font;
 
 export let SURFACE_BG = activeTheme.bg;
 
-export function setRuntimeTheme(name?: string) {
+function isRenderableCssColor(value?: string): boolean {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+export function setRuntimeTheme(name?: string, customTheme?: CustomTheme) {
   const key = (name ?? "deep_winter") as ThemeName;
   activeTheme = THEME_PRESETS[key] ?? THEME_PRESETS.deep_winter;
+
+  const useCustom = Boolean(
+    isRenderableCssColor(customTheme?.bg)
+    && isRenderableCssColor(customTheme?.accent)
+    && isRenderableCssColor(customTheme?.text),
+  );
+  const cyan = useCustom ? String(customTheme?.accent).trim() : activeTheme.cyan;
+  const yellow = activeTheme.yellow;
+  const green = activeTheme.green;
+  const red = activeTheme.red;
+  const white = useCustom ? String(customTheme?.text).trim() : activeTheme.white;
+  const bgBase = useCustom ? String(customTheme?.bg).trim() : activeTheme.bgSolid;
+  const bg = useCustom
+    ? `linear-gradient(180deg, ${bgBase} 0%, ${bgBase} 100%)`
+    : activeTheme.bg;
+
   COLOR = {
-    cyan: activeTheme.cyan,
-    yellow: activeTheme.yellow,
-    green: activeTheme.green,
-    red: activeTheme.red,
-    white: activeTheme.white,
+    cyan,
+    yellow,
+    green,
+    red,
+    white,
   };
-  VIOLET = activeTheme.violet;
+  VIOLET = useCustom ? cyan : activeTheme.violet;
   FONT = activeTheme.font;
-  SURFACE_BG = activeTheme.bg;
+  SURFACE_BG = bg;
 }
 
 // ── Broadcast-grade typography styles ─────────────────────────────────────────

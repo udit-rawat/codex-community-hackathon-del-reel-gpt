@@ -14,7 +14,7 @@
  */
 
 import React, { useMemo } from "react";
-import { AbsoluteFill, Audio, interpolate, OffthreadVideo, staticFile, useVideoConfig } from "remotion";
+import { AbsoluteFill, Audio, interpolate, Loop, OffthreadVideo, staticFile, useVideoConfig } from "remotion";
 import type { AnimateIn, BeatLayout, BeatRenderConfig, RemotionProps, ScenePayload, TakeawaySceneData, TimingEntry } from "./types";
 import { LayoutRenderer }  from "./LayoutRenderer";
 import { SceneRouter }     from "./SceneRouter";
@@ -107,20 +107,23 @@ function supportsAnimationOverlay(scenePayload?: ScenePayload): boolean {
 const MotionPlate: React.FC<{
   src: string;
   mode: BeatRenderConfig["mode"];
-}> = ({ src, mode }) => {
+  durationFrames: number;
+}> = ({ src, mode, durationFrames }) => {
   const dimOpacity = mode === "hybrid" ? 0.18 : 0.1;
 
   return (
     <AbsoluteFill style={{ background: "#000000" }}>
-      <OffthreadVideo
-        src={staticFile(src)}
-        volume={0}
-        style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-        }}
-      />
+      <Loop durationInFrames={Math.max(1, durationFrames)}>
+        <OffthreadVideo
+          src={staticFile(src)}
+          volume={0}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+          }}
+        />
+      </Loop>
       <AbsoluteFill
         style={{
           background: `linear-gradient(180deg, rgba(0,0,0,${dimOpacity}) 0%, rgba(0,0,0,0.38) 100%)`,
@@ -169,6 +172,7 @@ export const VideoComposition: React.FC<RemotionProps> = ({
   timing,
   audioSrc,
   themeName,
+  customTheme,
   beatConfigs = {},
   cues = {},
 }) => {
@@ -177,7 +181,7 @@ export const VideoComposition: React.FC<RemotionProps> = ({
   const { cameraY }     = useCameraY(timing, totalBeats);
   const beatIds         = useMemo(() => beats.map(b => b.beat), [beats]);
 
-  setRuntimeTheme(themeName);
+  setRuntimeTheme(themeName, customTheme);
 
   return (
     <SceneContext.Provider value={{ cues, fps }}>
@@ -262,7 +266,11 @@ export const VideoComposition: React.FC<RemotionProps> = ({
               >
                 <AbsoluteFill style={{ background: hasMotionPlate ? "#000000" : undefined }}>
                   {hasMotionPlate && beatConfig?.videoSrc ? (
-                    <MotionPlate src={beatConfig.videoSrc} mode={beatConfig.mode} />
+                    <MotionPlate
+                      src={beatConfig.videoSrc}
+                      mode={beatConfig.mode}
+                      durationFrames={beatDurFrames}
+                    />
                   ) : null}
 
                   {shouldRenderOverlay ? (

@@ -40,6 +40,12 @@ export interface BeatRenderConfig {
   thumbnailSrc?: string | null;
 }
 
+export interface CustomTheme {
+  bg?: string;
+  accent?: string;
+  text?: string;
+}
+
 // ── Root props passed from animator.py via --props ────────────────────────────
 
 export interface RemotionProps {
@@ -63,6 +69,8 @@ export interface RemotionProps {
   totalFrames: number;
   /** Active visual theme */
   themeName?: string;
+  /** Optional custom runtime theme values applied at render time only */
+  customTheme?: CustomTheme;
   /** Beat-level render metadata from project.json */
   beatConfigs?: Record<string, BeatRenderConfig>;
   /**

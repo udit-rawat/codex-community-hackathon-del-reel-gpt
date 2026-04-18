@@ -1,11 +1,37 @@
 import React from "react";
 import { Composition, staticFile } from "remotion";
 import { getAudioDurationInSeconds } from "@remotion/media-utils";
+import { z } from "zod";
 import { VideoComposition } from "./VideoComposition";
 import type { RemotionProps } from "./types";
 
 const FPS = 30;
 const PADDING = FPS;
+
+const remotionPropsSchema = z.object({
+  beats: z.array(z.object({ beat: z.number() })),
+  scenes: z.record(z.string(), z.object({
+    animate_in: z.string().optional(),
+    data: z.object({ layout: z.string() }).passthrough(),
+  }).passthrough()).optional(),
+  params: z.record(z.string(), z.unknown()).optional(),
+  timing: z.record(z.string(), z.object({
+    start: z.number(),
+    duration: z.number(),
+    end: z.number(),
+    text: z.string().optional(),
+  })),
+  audioSrc: z.string(),
+  totalFrames: z.number(),
+  themeName: z.string().optional(),
+  customTheme: z.object({
+    bg: z.string().optional(),
+    accent: z.string().optional(),
+    text: z.string().optional(),
+  }).optional(),
+  cues: z.record(z.string(), z.number()).optional(),
+  beatConfigs: z.record(z.string(), z.unknown()).optional(),
+});
 
 async function dynamicDuration({
   props,
@@ -96,7 +122,8 @@ export const RemotionRoot: React.FC = () => {
       fps={FPS}
       width={1080}
       height={1920}
-      defaultProps={defaultProps as unknown as Record<string, unknown>}
+      schema={remotionPropsSchema}
+      defaultProps={defaultProps as unknown as z.infer<typeof remotionPropsSchema>}
       calculateMetadata={dynamicDuration}
     />
   );

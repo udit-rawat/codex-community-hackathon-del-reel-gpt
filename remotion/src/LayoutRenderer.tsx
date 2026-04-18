@@ -13,6 +13,7 @@
 import React from "react";
 import { interpolate, spring, useVideoConfig } from "remotion";
 import type { LayoutNode, NodeColor, NodeSize } from "./types";
+import { COLOR } from "./layouts/_shared";
 import { useBeatFrame } from "./hooks/useBeatFrame";
 import { useCue } from "./hooks/useCue";
 import { slideUp, scaleIn, popIn, staggerDelay as calcStagger } from "./utils/springIn";
@@ -38,14 +39,6 @@ function useNodeFrame(node: LayoutNode): { frame: number; delay: number } {
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
 
-const COLOR_MAP: Record<NodeColor, string> = {
-  green:  "#10B981",   // emerald  — positive metrics
-  cyan:   "#6366F1",   // indigo   — primary accent / neutral info
-  yellow: "#8B5CF6",   // violet   — section labels / headers
-  red:    "#EF4444",   // red      — negative / bottleneck
-  white:  "#F9FAFB",   // off-white — main body text
-};
-
 const SIZE_MAP: Record<NodeSize, number> = {
   xs: 36,
   sm: 48,
@@ -55,7 +48,7 @@ const SIZE_MAP: Record<NodeSize, number> = {
 };
 
 function color(c: NodeColor | undefined, fallback: NodeColor = "white"): string {
-  return COLOR_MAP[c ?? fallback];
+  return COLOR[c ?? fallback] ?? COLOR[fallback];
 }
 
 // ── Root dispatcher ────────────────────────────────────────────────────────────
@@ -184,7 +177,7 @@ const TerminalPromptNode: React.FC<{ node: LayoutNode }> = ({ node }) => (
   <div style={{
     fontSize: 22,
     fontWeight: 500,
-    color: COLOR_MAP.cyan,
+    color: color("cyan"),
     fontFamily: "'Inter', 'system-ui', sans-serif",
     letterSpacing: "0.15em",
     textTransform: "uppercase",
@@ -236,7 +229,7 @@ const TerminalTextNode: React.FC<{ node: LayoutNode }> = ({ node }) => {
       {text.slice(0, charsVisible)}
       {node.cursor && (
         <span style={{
-          color: COLOR_MAP.cyan,
+          color: color("cyan"),
           opacity: cursorOn ? 1 : 0,
         }}>
           |
@@ -271,7 +264,7 @@ const StatBoxNode: React.FC<{ node: LayoutNode }> = ({ node }) => {
       {node.label && (
         <div style={{
           fontSize: 48,
-          color: COLOR_MAP.white,
+          color: color("white"),
           opacity: 0.55,
           marginTop: 8,
           fontFamily: "'Inter', 'system-ui', sans-serif",
@@ -313,7 +306,7 @@ const LabelValueCardNode: React.FC<{ node: LayoutNode }> = ({ node }) => {
       <div style={{
         fontSize: 28,
         fontWeight: 500,
-        color: COLOR_MAP.white,
+        color: color("white"),
         opacity: 0.45,
         textTransform: "uppercase",
         letterSpacing: "0.12em",
@@ -341,7 +334,7 @@ const CodeBlockNode: React.FC<{ node: LayoutNode }> = ({ node }) => (
   <pre style={{
     fontFamily: "'JetBrains Mono', 'Fira Code', 'Courier New', monospace",
     fontSize: SIZE_MAP.sm,
-    color: COLOR_MAP.white,
+    color: color("white"),
     background: "rgba(255,255,255,0.03)",
     padding: 28,
     borderRadius: 12,
@@ -355,8 +348,8 @@ const CodeBlockNode: React.FC<{ node: LayoutNode }> = ({ node }) => (
       <div
         key={i}
         style={{
-          color: i === node.highlight_line ? COLOR_MAP.yellow : COLOR_MAP.white,
-          background: i === node.highlight_line ? `${COLOR_MAP.yellow}12` : undefined,
+          color: i === node.highlight_line ? color("yellow") : color("white"),
+          background: i === node.highlight_line ? `${color("yellow")}12` : undefined,
           padding: i === node.highlight_line ? "2px 8px" : "2px 0",
           borderRadius: i === node.highlight_line ? 4 : undefined,
           opacity: i === node.highlight_line ? 1 : 0.65,

@@ -114,19 +114,13 @@ const ProgressBorder: React.FC<{
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
-const ACCENT: Record<string, string> = {
-  cyan:   COLOR.cyan,
-  green:  COLOR.green,
-  yellow: COLOR.yellow,
-};
-
 export const TakeawayScene: React.FC<{
   data:           TakeawaySceneData;
   durationFrames: number;
 }> = ({ data, durationFrames }) => {
   const frame   = useBeatFrame();
   const { fps } = useVideoConfig();
-  const accent  = ACCENT[data.accent_color ?? "cyan"] ?? COLOR.cyan;
+  const accent  = COLOR[data.accent_color ?? "cyan"] ?? COLOR.cyan;
 
   // Card entrance: HEAVY spring for physical weight
   const cardEntry = spring({ frame: Math.max(0, frame), fps, config: SPRING_HEAVY });
